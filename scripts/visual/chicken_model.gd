@@ -19,6 +19,8 @@ var body_root: Node3D
 var head: Node3D
 var tail: Node3D
 var wings: Array[Node3D] = []
+## Optional pivots for the feathered end of each wing; they follow the flap with some lag.
+var wing_tips: Array[Node3D] = []
 var legs: Array[Node3D] = []
 var eyes: Array[Node3D] = []
 
@@ -123,12 +125,10 @@ func animate(delta: float, speed: float) -> void:
 		body_root.rotation.x = lerpf(body_root.rotation.x, 0.1 * amount + 0.25 * _frenzy + _peck * 0.5, k)
 		body_root.position.y = BODY_Y + absf(sin(_phase)) * (0.05 + 0.06 * _frenzy) * amount + sin(_time * 2.2) * 0.008
 		head.position.z = head_rest_z + sin(_phase * 2.0) * 0.03 * amount
-	# Crazy run: the head shakes around and the wings never stop flapping.
+	# Crazy run: the head shakes around (the wings flap nonstop, see below).
 	if _pose <= 0.001:
 		head.rotation.y = lerpf(head.rotation.y, sin(_time * 23.0) * 0.4 * _frenzy, k)
 		head.rotation.z = lerpf(head.rotation.z, sin(_time * 17.0) * 0.25 * _frenzy, k)
-	if _frenzy > 0.5:
-		flap(0.1)
 
 	for i in legs.size():
 		var side := -1.0 if i == 0 else 1.0
@@ -136,10 +136,19 @@ func animate(delta: float, speed: float) -> void:
 			legs[i].rotation.x = lerpf(legs[i].rotation.x, sin(_phase) * 0.6 * side * amount, k)
 
 	_flap_boost = maxf(_flap_boost - delta, 0.0)
-	var flap := 0.08 + (sin(_time * 30.0) * 0.5 + 0.5) * 0.7 * _flap_boost + sin(_phase * 2.0) * 0.06 * amount
+	# Wings beat twice per stride, harder the faster it goes, and go wild in a crazy run.
+	var beat := sin(_phase * 2.0) * 0.5 + 0.5
+	var frantic := sin(_time * 26.0) * 0.5 + 0.5
+	var flap := 0.08 + (sin(_time * 30.0) * 0.5 + 0.5) * 0.7 * minf(_flap_boost * 2.0, 1.0) \
+			+ (0.15 + 0.35 * beat) * amount + frantic * 0.9 * _frenzy
+	var sweep := sin(_phase * 2.0 + 0.8) * 0.25 * amount
+	var tip_lag := (sin(_phase * 2.0 - 1.2) * 0.5 + 0.5) * 0.4 * amount + (sin(_time * 26.0 - 1.2) * 0.5 + 0.5) * 0.5 * _frenzy
 	for i in wings.size():
 		var side := -1.0 if i == 0 else 1.0
 		wings[i].rotation.z = side * flap
+		wings[i].rotation.x = sweep
+		if i < wing_tips.size():
+			wing_tips[i].rotation.z = side * tip_lag
 
 	tail.rotation.x = sin(_time * 3.0) * 0.05 - 0.1 * amount
 	_peck = maxf(_peck - delta * 2.0, 0.0)

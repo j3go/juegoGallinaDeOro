@@ -2,14 +2,15 @@
 class_name KingChickenModel
 extends ChickenModel
 ## Goofy crowned chicken (based on reference/gallina_rey.png): pear-shaped body, long neck,
-## bulging googly eyes, open beak, floppy comb under a tilted gold crown, wings spread like
-## hands and long scaly legs with clawed toes. Reuses all of ChickenModel's animation.
+## bulging googly eyes, open beak, floppy comb under a tilted gold crown, feathered wings and
+## long scaly legs with clawed toes. Reuses all of ChickenModel's animation.
 
 const KING_BEAK_COLOR := Color(1.0, 0.56, 0.14)
 const CLAW_COLOR := Color(0.96, 0.93, 0.84)
 const MOUTH_COLOR := Color(0.55, 0.12, 0.1)
 const GEM_RED := Color(0.85, 0.08, 0.12)
 const GEM_BLUE := Color(0.15, 0.35, 0.95)
+const FEATHER_TIP_COLOR := Color(0.9, 0.86, 0.78)
 
 
 func _init() -> void:
@@ -130,15 +131,22 @@ func _build_crown(parent: Node3D, comb: Material) -> void:
 		Toon.part(crown, Toon.sphere(0.022, 12, 6), gem, dir * 0.108, Vector3(0, rad_to_deg(a), 0), Vector3(1.0, 1.0, 0.6))
 
 
-## Wings held out to the sides with the feather "fingers" spread, like open hands.
+## Folded wing lying along the body: a rounded shoulder of coverts and a fan of long flight
+## feathers sweeping backwards. The feather fan sits on its own pivot so it lags the flap.
 func _build_wing(side: float, wing_mat: Material) -> Node3D:
-	var wing := Toon.pivot(body_root, Vector3(0.36 * side, 0.78, 0.04))
-	var arm := Toon.pivot(wing)
-	arm.rotation_degrees = Vector3(0, -15 * side, 62 * side)
-	Toon.part(arm, Toon.sphere(0.17), wing_mat, Vector3(0, -0.14, 0), Vector3.ZERO, Vector3(1.0, 1.2, 0.4))
-	for k in 4:
-		var a := -36.0 + k * 24.0
-		var feather := Toon.pivot(arm, Vector3(0, -0.28, 0))
-		feather.rotation_degrees.z = a
-		Toon.part(feather, Toon.ellipsoid(0.045, 0.22), wing_mat, Vector3(0, -0.08, 0), Vector3.ZERO, Vector3(1.0, 1.0, 0.6))
+	var tip_mat := Toon.mat(FEATHER_TIP_COLOR, 0.85, 0.0, 0.2)
+	var wing := Toon.pivot(body_root, Vector3(0.36 * side, 0.86, 0.06))
+	var plate := Toon.pivot(wing)
+	plate.rotation_degrees = Vector3(-25, 0, 14 * side)
+	Toon.part(plate, Toon.sphere(0.2), wing_mat, Vector3(0.03 * side, -0.12, -0.08), Vector3(-20, 0, 0), Vector3(0.32, 0.9, 1.25))
+	var tip := Toon.pivot(plate, Vector3(0.02 * side, -0.2, -0.04))
+	# Flight feathers overlap from the front (short) to the back (long), sweeping backwards.
+	var lengths := [0.26, 0.32, 0.38, 0.42, 0.4]
+	for k in lengths.size():
+		var feather := Toon.pivot(tip, Vector3(0, k * 0.03, 0.05 - k * 0.06))
+		feather.rotation_degrees.x = 30 + k * 12
+		var length: float = lengths[k]
+		Toon.part(feather, Toon.ellipsoid(0.06, length), wing_mat if k < 3 else tip_mat,
+				Vector3(0.005 * k * side, -length * 0.45, 0), Vector3.ZERO, Vector3(0.3, 1.0, 1.0))
+	wing_tips.append(tip)
 	return wing
