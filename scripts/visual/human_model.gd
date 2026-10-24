@@ -1,0 +1,555 @@
+@tool
+class_name HumanModel
+extends Node3D
+## Chubby costumed kid (see personajes.png): round face peeking out of a hood, huge eyes,
+## stubby mitten arms and big shoes. Four costumes, all built from primitives. Faces +Z.
+
+enum Costume { CHICKEN, CONE, FISH, BUNNY }
+
+const HIP_Y := 0.34
+const HEAD_Y := 0.74
+const RIG_SCALE := 1.0
+const SKIN := Color(0.95, 0.72, 0.55)
+const DIRT := Color(0.42, 0.31, 0.23)
+const HOOD := Vector3(0.44, 0.42, 0.42)
+const HOOD_CENTER := Vector3(0, 0.03, -0.03)
+
+const FABRIC_SHADER := """
+shader_type spatial;
+uniform vec4 albedo : source_color = vec4(1.0);
+uniform vec4 dirt_color : source_color = vec4(0.42, 0.31, 0.23, 1.0);
+uniform float dirt_amount = 0.0;
+uniform float dirt_scale = 6.0;
+uniform float seed = 0.0;
+uniform float roughness_value = 0.9;
+uniform float rim_value = 0.3;
+varying vec3 local_pos;
+
+float hash(vec3 p) {
+	p = fract(p * 0.3183099 + 0.1);
+	p *= 17.0;
+	return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float noise(vec3 x) {
+	vec3 i = floor(x);
+	vec3 f = fract(x);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(mix(hash(i), hash(i + vec3(1, 0, 0)), f.x),
+			mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
+		mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x),
+			mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+
+void vertex() {
+	local_pos = VERTEX;
+}
+
+void fragment() {
+	vec3 p = local_pos * dirt_scale + seed;
+	float n = noise(p) * 0.6 + noise(p * 2.3) * 0.28 + noise(p * 5.7) * 0.12;
+	float stain = smoothstep(1.0 - dirt_amount, 1.03 - dirt_amount, n);
+	float grain = noise(local_pos * 90.0);
+	vec3 col = albedo.rgb * (0.95 + 0.07 * grain);
+	ALBEDO = mix(col, dirt_color.rgb * (0.9 + 0.2 * grain), stain * 0.85);
+	ROUGHNESS = roughness_value;
+	RIM = rim_value;
+	RIM_TINT = 0.6;
+}
+"""
+
+static var _shader: Shader
+static var _fabrics := {}
+static var _tori := {}
+
+@export var costume: Costume = Costume.CHICKEN:
+	set(value):
+		costume = value
+		if is_inside_tree():
+			_build()
+
+var rig: Node3D
+var body_root: Node3D
+var head: Node3D
+var hips: Array[Node3D] = []
+var arms: Array[Node3D] = []
+var eyes: Array[Node3D] = []
+var pupils: Array[Node3D] = []
+## Accessories that lag behind the body: {node, base: Vector3, amount: float, sway: float}.
+var wobblers: Array[Dictionary] = []
+var fish_tail: Node3D
+
+var _torso := Vector3(0.36, 0.36, 0.32)
+var _torso_y := 0.25
+var _phase := 0.0
+var _time := 0.0
+var _air := 0.0
+var _hug := 0.0
+var _celebrating := false
+var _sad := false
+var _blink_timer := 3.0
+var _look_timer := 1.5
+var _look := Vector2.ZERO
+var _look_target := Vector2.ZERO
+var _prev_body_y := HIP_Y
+var _spring := Vector2.ZERO
+var _spring_vel := Vector2.ZERO
+var _prev_yaw := 0.0
+var _fx_tween: Tween
+
+
+func _ready() -> void:
+	_build()
+
+
+func set_costume(value: Costume) -> void:
+	costume = value
+
+
+# --- Materials & helpers -------------------------------------------------------------------
+
+static func fabric(color: Color, dirt: float = 0.0, scale: float = 6.0, roughness: float = 0.9, rim: float = 0.3) -> ShaderMaterial:
+	var key := "%s|%.2f|%.2f|%.2f|%.2f" % [color.to_html(), dirt, scale, roughness, rim]
+	if _fabrics.has(key):
+		return _fabrics[key]
+	if _shader == null:
+		_shader = Shader.new()
+		_shader.code = FABRIC_SHADER
+	var m := ShaderMaterial.new()
+	m.shader = _shader
+	m.set_shader_parameter("albedo", color)
+	m.set_shader_parameter("dirt_color", DIRT)
+	m.set_shader_parameter("dirt_amount", dirt)
+	m.set_shader_parameter("dirt_scale", scale)
+	m.set_shader_parameter("seed", float(_fabrics.size()) * 3.7)
+	m.set_shader_parameter("roughness_value", roughness)
+	m.set_shader_parameter("rim_value", rim)
+	_fabrics[key] = m
+	return m
+
+
+static func torus(inner: float, outer: float) -> TorusMesh:
+	var key := "%.3f|%.3f" % [inner, outer]
+	if not _tori.has(key):
+		var m := TorusMesh.new()
+		m.inner_radius = inner
+		m.outer_radius = outer
+		m.rings = 32
+		m.ring_segments = 12
+		_tori[key] = m
+	return _tori[key]
+
+
+## Ellipsoid with the given radii.
+func _blob(parent: Node3D, radii: Vector3, material: Material, pos: Vector3 = Vector3.ZERO,
+		rot_deg: Vector3 = Vector3.ZERO) -> MeshInstance3D:
+	var r := maxf(radii.x, maxf(radii.y, radii.z))
+	return Toon.part(parent, Toon.sphere(r, 32, 16), material, pos, rot_deg, radii / r)
+
+
+## Places a part on the surface of an ellipsoid, with its local +Z along the surface normal.
+func _on_surface(parent: Node3D, center: Vector3, radii: Vector3, dir: Vector3, mesh: Mesh,
+		material: Material, scl: Vector3 = Vector3.ONE, lift: float = 0.0, roll_deg: float = 0.0) -> MeshInstance3D:
+	var d := dir.normalized()
+	var p := d / sqrt(pow(d.x / radii.x, 2) + pow(d.y / radii.y, 2) + pow(d.z / radii.z, 2))
+	var n := Vector3(p.x / (radii.x * radii.x), p.y / (radii.y * radii.y), p.z / (radii.z * radii.z)).normalized()
+	var up := Vector3.UP if absf(n.y) < 0.98 else Vector3.FORWARD
+	var mi := Toon.part(parent, mesh, material, center + p + n * lift)
+	mi.basis = Basis.looking_at(n, up, true) * Basis(Vector3.BACK, deg_to_rad(roll_deg))
+	mi.scale = scl
+	return mi
+
+
+func _wobbler(node: Node3D, amount: float, sway: float = 0.0) -> void:
+	wobblers.append({"node": node, "base": node.rotation, "amount": amount, "sway": sway})
+
+
+# --- Build ---------------------------------------------------------------------------------
+
+func _build() -> void:
+	for child in get_children():
+		remove_child(child)
+		child.queue_free()
+	hips.clear()
+	arms.clear()
+	eyes.clear()
+	pupils.clear()
+	wobblers.clear()
+	fish_tail = null
+
+	rig = Toon.pivot(self, Vector3.ZERO, "Rig")
+	rig.scale = Vector3.ONE * RIG_SCALE
+	body_root = Toon.pivot(rig, Vector3(0, HIP_Y, 0), "Body")
+
+	match costume:
+		Costume.CHICKEN:
+			_build_chicken()
+		Costume.CONE:
+			_build_cone()
+		Costume.FISH:
+			_build_fish()
+		Costume.BUNNY:
+			_build_bunny()
+
+
+## Shared body: legs, torso, mitten arms and the hooded head. Returns nothing; sets `head`.
+func _build_base(torso: Vector3, torso_mat: Material, leg_mat: Material, shoe_mat: Material,
+		sleeve_mat: Material, hand_mat: Material, hood_mat: Material) -> void:
+	_torso = torso
+	_torso_y = 0.24 + (torso.y - 0.36) * 0.4
+	for side: float in [-1.0, 1.0]:
+		var hip := Toon.pivot(rig, Vector3(0.13 * side, HIP_Y, 0))
+		Toon.part(hip, Toon.capsule(0.1, 0.3), leg_mat, Vector3(0, -0.1, 0))
+		_blob(hip, Vector3(0.14, 0.095, 0.17), shoe_mat, Vector3(0, -0.25, 0.045))
+		hips.append(hip)
+
+	_blob(body_root, torso, torso_mat, Vector3(0, _torso_y, 0))
+
+	for side: float in [-1.0, 1.0]:
+		var arm := Toon.pivot(body_root, Vector3((torso.x - 0.04) * side, _torso_y + torso.y * 0.48, 0.02))
+		Toon.part(arm, Toon.capsule(0.088, 0.3), sleeve_mat, Vector3(0, -0.11, 0))
+		_blob(arm, Vector3(0.115, 0.12, 0.115), hand_mat, Vector3(0, -0.27, 0.01))
+		arms.append(arm)
+
+	head = Toon.pivot(body_root, Vector3(0, HEAD_Y, 0.02), "Head")
+	_blob(head, HOOD, hood_mat, HOOD_CENTER)
+	_blob(head, Vector3(0.33, 0.3, 0.26), Toon.mat(SKIN, 0.75, 0.0, 0.25), Vector3(0, -0.03, 0.14))
+	Toon.part(head, torus(0.26, 0.37), hood_mat, Vector3(0, -0.03, 0.3), Vector3(90, 0, 0), Vector3(1.0, 0.9, 0.97))
+	_build_eyes()
+
+
+func _build_eyes() -> void:
+	var white := Toon.mat(Color(0.97, 0.97, 0.95), 0.3, 0.0, 0.0)
+	var black := Toon.mat(Color(0.05, 0.05, 0.07), 0.2, 0.0, 0.0)
+	var shine := Toon.unshaded(Color(1, 1, 1))
+	for side: float in [-1.0, 1.0]:
+		var eye := Toon.pivot(head, Vector3(0.135 * side, 0.02, 0.345))
+		eye.rotation_degrees = Vector3(-4, 20 * side, 0)
+		_blob(eye, Vector3(0.112, 0.13, 0.05), white)
+		var pupil := Toon.pivot(eye, Vector3(-0.014 * side, -0.008, 0.03))
+		_blob(pupil, Vector3(0.078, 0.09, 0.035), black)
+		_blob(pupil, Vector3(0.02, 0.02, 0.01), shine, Vector3(0.024, 0.036, 0.03))
+		eyes.append(eye)
+		pupils.append(pupil)
+
+
+func _torso_center() -> Vector3:
+	return Vector3(0, _torso_y, 0)
+
+
+## Two shoulder straps in front and a backpack behind.
+func _backpack(color: Color, strap_x: float = 0.17) -> void:
+	var dark := fabric(color, 0.1, 5.0, 0.8)
+	_blob(body_root, Vector3(0.25, 0.25, 0.13), dark, Vector3(0, _torso_y + 0.06, -_torso.z - 0.04), Vector3(-6, 0, 0))
+	_blob(body_root, Vector3(0.18, 0.1, 0.07), dark, Vector3(0, _torso_y - 0.06, -_torso.z - 0.13))
+	for side: float in [-1.0, 1.0]:
+		_on_surface(body_root, _torso_center(), _torso, Vector3(strap_x * side / _torso.x, 0.38, 0.75),
+				Toon.box(Vector3(0.065, 0.32, 0.025)), dark, Vector3.ONE, 0.0, -10.0 * side)
+		_on_surface(body_root, _torso_center(), _torso, Vector3(side * 0.75, 0.55, -0.1),
+				Toon.box(Vector3(0.065, 0.26, 0.025)), dark, Vector3.ONE, 0.0, 0.0)
+
+
+func _build_chicken() -> void:
+	var suit := fabric(Color(0.93, 0.9, 0.84), 0.34, 5.5)
+	var red := Toon.mat(Color(0.86, 0.17, 0.13), 0.7)
+	var yellow := Toon.mat(Color(0.98, 0.76, 0.22), 0.55)
+	var shoe := fabric(Color(0.42, 0.29, 0.21), 0.1, 8.0, 0.8)
+	_build_base(Vector3(0.42, 0.4, 0.37), suit, suit, shoe, Toon.mat(SKIN, 0.75), Toon.mat(SKIN, 0.75), suit)
+
+	# Comb, beak and the costume's own eyes on top of the hood.
+	var comb := Toon.pivot(head, Vector3(0, 0.41, 0.02))
+	_blob(comb, Vector3(0.075, 0.1, 0.07), red, Vector3(0, 0.05, 0.12), Vector3(30, 0, 0))
+	_blob(comb, Vector3(0.085, 0.12, 0.075), red, Vector3(0, 0.09, 0.0))
+	_blob(comb, Vector3(0.075, 0.1, 0.07), red, Vector3(0, 0.05, -0.12), Vector3(-30, 0, 0))
+	_wobbler(comb, 0.6, 0.5)
+	var beak := Toon.part(head, Toon.cylinder(0.0, 0.12, 0.26, 20), yellow, Vector3(0, 0.29, 0.4), Vector3(72, 0, 0), Vector3(1.3, 1.0, 0.6))
+	beak.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var white := Toon.mat(Color(0.97, 0.97, 0.95), 0.3, 0.0, 0.0)
+	var black := Toon.mat(Color(0.05, 0.05, 0.07), 0.2, 0.0, 0.0)
+	for side: float in [-1.0, 1.0]:
+		var e := _on_surface(head, HOOD_CENTER, HOOD, Vector3(0.62 * side, 0.55, 0.6),
+				Toon.sphere(0.1), white, Vector3(1.0, 1.15, 0.45))
+		Toon.part(e, Toon.sphere(0.06), black, Vector3(0.012 * side, 0, 0.075), Vector3.ZERO, Vector3(1.0, 1.1, 0.5))
+	# Red wattle peeking out under the beak on one side.
+	_blob(head, Vector3(0.05, 0.08, 0.05), red, Vector3(-0.34, -0.1, 0.2))
+
+	# Bandana: knot ring around the neck plus a triangle in front.
+	var bandana := fabric(Color(0.86, 0.2, 0.15), 0.12, 6.0, 0.8)
+	Toon.part(body_root, torus(0.27, 0.34), bandana, Vector3(0, 0.56, 0.03), Vector3(-12, 0, 0), Vector3(1.05, 0.9, 1.0))
+	_on_surface(body_root, _torso_center(), _torso, Vector3(0, 0.55, 1.0),
+			Toon.prism(Vector3(0.46, 0.3, 0.05)), bandana, Vector3.ONE, 0.01, 180.0)
+	_blob(body_root, Vector3(0.09, 0.07, 0.06), bandana, Vector3(0.24, 0.52, 0.18))
+
+	_backpack(Color(0.12, 0.12, 0.13), 0.24)
+
+	# Tail feathers.
+	var tail := Toon.pivot(body_root, Vector3(0, _torso_y - 0.2, -_torso.z + 0.08))
+	for i in 3:
+		var a := (i - 1) * 28.0
+		_blob(tail, Vector3(0.08, 0.16, 0.06), suit, Vector3((i - 1) * 0.07, 0.0, -0.1), Vector3(-65, 0, a))
+	_wobbler(tail, -0.8, 0.6)
+
+
+func _build_cone() -> void:
+	var jacket := fabric(Color(0.33, 0.43, 0.24), 0.18, 6.0)
+	var pants := fabric(Color(0.1, 0.1, 0.11), 0.05, 7.0)
+	var balaclava := fabric(Color(0.1, 0.1, 0.12), 0.0, 6.0, 0.95, 0.35)
+	var shoe := fabric(Color(0.85, 0.77, 0.64), 0.2, 8.0, 0.8)
+	_build_base(Vector3(0.36, 0.35, 0.32), jacket, pants, shoe, jacket, Toon.mat(SKIN, 0.75), balaclava)
+	# Pants show under the jacket.
+	_blob(body_root, Vector3(0.31, 0.16, 0.28), pants, Vector3(0, 0.02, 0))
+	# Jacket hood bunched behind the neck and a collar.
+	Toon.part(body_root, torus(0.22, 0.33), jacket, Vector3(0, 0.53, 0.0), Vector3(-10, 0, 0), Vector3(1.0, 1.3, 1.0))
+	_blob(body_root, Vector3(0.3, 0.2, 0.15), jacket, Vector3(0, 0.62, -0.3), Vector3(20, 0, 0))
+
+	var grey := Toon.mat(Color(0.62, 0.62, 0.6), 0.45, 0.4)
+	_on_surface(body_root, _torso_center(), _torso, Vector3(0, 0.15, 1.0), Toon.box(Vector3(0.025, 0.36, 0.02)), grey, Vector3.ONE, 0.0, 0.0)
+	_on_surface(body_root, _torso_center(), _torso, Vector3(0, 0.62, 1.0), Toon.box(Vector3(0.04, 0.08, 0.02)), grey, Vector3.ONE, 0.01, 0.0)
+	var tape := fabric(Color(0.68, 0.67, 0.62), 0.15, 9.0, 0.6)
+	_on_surface(body_root, _torso_center(), _torso, Vector3(-0.4, -0.1, 1.0), Toon.box(Vector3(0.17, 0.1, 0.02)), jacket, Vector3.ONE, 0.0, 0.0)
+	_on_surface(body_root, _torso_center(), _torso, Vector3(-0.42, 0.0, 1.0), Toon.box(Vector3(0.15, 0.05, 0.02)), tape, Vector3.ONE, 0.012, 6.0)
+	_on_surface(body_root, _torso_center(), _torso, Vector3(0.9, 0.5, 0.2), Toon.box(Vector3(0.12, 0.05, 0.02)), tape, Vector3.ONE, 0.0, -20.0)
+
+	# Traffic cone hat, slightly tilted.
+	var orange := fabric(Color(0.95, 0.42, 0.12), 0.2, 4.5, 0.55, 0.2)
+	var stripe := fabric(Color(0.95, 0.92, 0.86), 0.25, 4.5, 0.55, 0.2)
+	var hat := Toon.pivot(head, Vector3(0.03, 0.2, -0.03))
+	hat.rotation_degrees = Vector3(-8, 0, -10)
+	Toon.part(hat, Toon.box(Vector3(0.62, 0.09, 0.62)), orange, Vector3(0, 0.045, 0), Vector3(0, 35, 0))
+	const H := 0.8
+	const R := 0.33
+	const TIP := 0.035
+	Toon.part(hat, Toon.cylinder(TIP, R, H, 24), orange, Vector3(0, 0.09 + H * 0.5, 0))
+	for band: Vector2 in [Vector2(0.2, 0.38), Vector2(0.56, 0.7)]:
+		var h := (band.y - band.x) * H
+		Toon.part(hat, Toon.cylinder(lerpf(R, TIP, band.y) + 0.006, lerpf(R, TIP, band.x) + 0.006, h, 24), stripe,
+				Vector3(0, 0.09 + (band.x + band.y) * 0.5 * H, 0))
+	Toon.part(hat, Toon.sphere(TIP), orange, Vector3(0, 0.09 + H, 0))
+	_wobbler(hat, 0.35, 0.4)
+
+
+func _build_fish() -> void:
+	var hoodie := fabric(Color(0.24, 0.26, 0.56), 0.12, 6.0)
+	var pants := fabric(Color(0.22, 0.24, 0.52), 0.1, 7.0)
+	var shoe := fabric(Color(0.92, 0.9, 0.86), 0.2, 8.0, 0.8)
+	_build_base(Vector3(0.35, 0.35, 0.31), hoodie, pants, shoe, hoodie, Toon.mat(SKIN, 0.75), hoodie)
+	_blob(body_root, Vector3(0.3, 0.15, 0.27), pants, Vector3(0, 0.03, 0))
+
+	# Drawstrings hanging from the hood.
+	var cord := Toon.mat(Color(0.88, 0.86, 0.8), 0.7)
+	for side: float in [-1.0, 1.0]:
+		Toon.part(head, Toon.capsule(0.014, 0.16), cord, Vector3(0.07 * side, -0.4, 0.3), Vector3(-15, 0, 0))
+		Toon.part(head, Toon.sphere(0.024), cord, Vector3(0.07 * side, -0.48, 0.32))
+
+	# Patches on the hoodie and legs.
+	var patch := fabric(Color(0.62, 0.64, 0.7), 0.2, 9.0, 0.7)
+	var c := _torso_center()
+	_on_surface(body_root, c, _torso, Vector3(-0.8, 0.1, 0.7), Toon.box(Vector3(0.12, 0.08, 0.02)), patch, Vector3.ONE, 0.0, 15.0)
+	_on_surface(body_root, c, _torso, Vector3(0.6, -0.5, 0.7), Toon.box(Vector3(0.1, 0.07, 0.02)), patch, Vector3.ONE, 0.0, -25.0)
+	_on_surface(body_root, c, _torso, Vector3(-0.5, 0.4, -0.8), Toon.box(Vector3(0.13, 0.08, 0.02)), patch, Vector3.ONE, 0.0, 30.0)
+	Toon.part(hips[1], Toon.box(Vector3(0.09, 0.06, 0.02)), patch, Vector3(0.0, -0.12, 0.1), Vector3(0, 0, 20))
+
+	# Crossbody bag.
+	var strap := fabric(Color(0.3, 0.3, 0.26), 0.1, 6.0, 0.8)
+	Toon.part(body_root, torus(_torso.x - 0.005, _torso.x + 0.03), strap, c + Vector3(0, 0.02, 0), Vector3(0, 0, 90 - 38), Vector3(1.0, 1.0, 0.92))
+	var bag := _on_surface(body_root, c, _torso, Vector3(-0.55, -0.45, 0.75), Toon.sphere(0.13), fabric(Color(0.33, 0.33, 0.28), 0.15, 7.0, 0.8),
+			Vector3(1.2, 0.85, 0.5), 0.02)
+	bag.rotation_degrees.z += 8.0
+
+	# Fish lying on the hood.
+	var fish := Toon.pivot(head, Vector3(0.0, 0.4, -0.03))
+	fish.scale = Vector3.ONE * 1.18
+	var scales := fabric(Color(0.56, 0.66, 0.74), 0.18, 5.0, 0.6)
+	var belly := fabric(Color(0.86, 0.84, 0.75), 0.1, 5.0, 0.7)
+	_blob(fish, Vector3(0.38, 0.15, 0.17), scales, Vector3(0.02, 0.0, 0.0), Vector3(0, 0, 4))
+	_blob(fish, Vector3(0.34, 0.09, 0.155), belly, Vector3(0.04, -0.06, 0.0), Vector3(0, 0, 4))
+	_blob(fish, Vector3(0.13, 0.12, 0.15), scales, Vector3(0.3, 0.0, 0.0), Vector3(0, 0, -10))
+	Toon.part(fish, Toon.prism(Vector3(0.22, 0.12, 0.03)), scales, Vector3(-0.02, 0.17, 0.0), Vector3(0, 0, -8))
+	fish_tail = Toon.pivot(fish, Vector3(-0.34, 0.01, 0.0))
+	for s: float in [-1.0, 1.0]:
+		_blob(fish_tail, Vector3(0.1, 0.13, 0.025), scales, Vector3(-0.09, 0.08 * s, 0.0), Vector3(0, 0, -50.0 * s))
+	var dark := Toon.mat(Color(0.12, 0.12, 0.15), 0.5)
+	for z: float in [-1.0, 1.0]:
+		for a: float in [45.0, -45.0]:
+			Toon.part(fish, Toon.box(Vector3(0.07, 0.016, 0.012)), dark, Vector3(0.32, 0.03, 0.135 * z), Vector3(0, 0, a))
+	Toon.part(fish, Toon.box(Vector3(0.012, 0.05, 0.06)), dark, Vector3(0.43, -0.03, 0.0), Vector3(0, 0, 20))
+	_wobbler(fish, 0.3, 0.6)
+
+
+func _build_bunny() -> void:
+	var pink := fabric(Color(0.93, 0.53, 0.6), 0.24, 5.5)
+	var inner := fabric(Color(0.97, 0.76, 0.78), 0.05, 5.5)
+	_build_base(Vector3(0.36, 0.37, 0.33), pink, pink, pink, pink, pink, pink)
+
+	for side: float in [-1.0, 1.0]:
+		var ear := Toon.pivot(head, Vector3(0.16 * side, 0.33, -0.06))
+		ear.rotation_degrees = Vector3(-8, 0, -14 * side)
+		_blob(ear, Vector3(0.1, 0.34, 0.075), pink, Vector3(0, 0.3, 0))
+		_blob(ear, Vector3(0.06, 0.27, 0.03), inner, Vector3(0, 0.31, 0.055))
+		_wobbler(ear, 1.0, 0.8)
+
+	# Bandage on the cheek.
+	var tan := Toon.mat(Color(0.88, 0.68, 0.48), 0.8)
+	Toon.part(head, Toon.box(Vector3(0.14, 0.055, 0.02)), tan, Vector3(-0.16, -0.1, 0.37), Vector3(0, -24, 30))
+	Toon.part(head, Toon.box(Vector3(0.045, 0.058, 0.024)), Toon.mat(Color(0.78, 0.55, 0.38), 0.8), Vector3(-0.16, -0.1, 0.37), Vector3(0, -24, 30))
+
+	# Drawstring bow at the neck.
+	var cord := Toon.mat(Color(0.94, 0.9, 0.82), 0.7)
+	for side: float in [-1.0, 1.0]:
+		Toon.part(body_root, torus(0.02, 0.045), cord, Vector3(0.05 * side, 0.36, 0.37), Vector3(90, 0, 90), Vector3(1.0, 1.0, 1.4))
+		Toon.part(body_root, Toon.capsule(0.012, 0.14), cord, Vector3(0.03 * side, 0.28, 0.36), Vector3(-15, 0, 12 * side))
+	Toon.part(body_root, Toon.sphere(0.025), cord, Vector3(0, 0.36, 0.38))
+
+	_backpack(Color(0.18, 0.17, 0.18), 0.22)
+
+
+# --- Animation -----------------------------------------------------------------------------
+
+## Called every physics frame. `speed` is horizontal speed in m/s.
+func animate(delta: float, speed: float, on_floor: bool) -> void:
+	if delta <= 0.0 or rig == null:
+		return
+	_time += delta
+	var ratio := clampf(speed / 5.0, 0.0, 1.7)
+	var running := clampf((speed - 5.5) / 3.0, 0.0, 1.0)
+	if speed > 0.15 and on_floor:
+		_phase += delta * (6.0 + speed * 1.4)
+	var k := 1.0 - exp(-14.0 * delta)
+	_air = move_toward(_air, 0.0 if on_floor else 1.0, delta * 6.0)
+	_hug = maxf(_hug - delta, 0.0)
+
+	# Legs: swing from the hip and lift the foot on the forward stroke.
+	var stride := minf(ratio, 1.25)
+	var swing := sin(_phase) * stride * (0.75 + running * 0.25)
+	for i in hips.size():
+		var side := -1.0 if i == 0 else 1.0
+		var s := swing * (1.0 if i == 0 else -1.0)
+		var air_pose := -0.8 if i == 0 else 0.45
+		hips[i].rotation.x = lerpf(hips[i].rotation.x, lerpf(s, air_pose, _air), k)
+		var lift := maxf(0.0, -sin(_phase + (0.0 if i == 0 else PI))) * 0.07 * stride
+		hips[i].position.y = HIP_Y + lift * (1.0 - _air)
+		hips[i].rotation.z = lerpf(hips[i].rotation.z, side * 0.06 * _air, k)
+
+	# Arms: opposite to the legs; flail in the air, hug the egg on collect, cheer when winning.
+	for i in arms.size():
+		var side := -1.0 if i == 0 else 1.0
+		var target_x := swing * 1.1 * side * (1.0 + running * 0.4)
+		var target_z := side * (0.32 + ratio * 0.08)
+		if _sad:
+			target_x = 0.15
+			target_z = side * 0.08
+		if _air > 0.0:
+			target_x = lerpf(target_x, -0.6 + sin(_time * 22.0 + i * PI) * 0.35, _air)
+			target_z = lerpf(target_z, side * 1.3, _air)
+		if _hug > 0.0:
+			target_x = -1.25
+			target_z = side * 0.35
+		if _celebrating:
+			target_x = -0.3
+			target_z = side * (2.6 + sin(_time * 12.0 + i * PI) * 0.35)
+		arms[i].rotation.x = lerpf(arms[i].rotation.x, target_x, k)
+		arms[i].rotation.z = lerpf(arms[i].rotation.z, target_z, k)
+
+	# Body: bouncy waddle, lean into the run, breathe when idle.
+	var bounce := absf(sin(_phase)) * (0.06 + running * 0.04) * stride
+	var breathe := sin(_time * 2.4) * 0.012 * (1.0 - minf(ratio, 1.0))
+	body_root.position.y = HIP_Y + bounce + breathe
+	body_root.scale = Vector3(1.0 - breathe * 0.6, 1.0 + breathe, 1.0 - breathe * 0.6)
+	var lean := 0.1 * ratio + running * 0.22 + (0.28 if _sad else 0.0) - _air * 0.12
+	body_root.rotation.x = lerpf(body_root.rotation.x, lean, k)
+	body_root.rotation.z = sin(_phase) * 0.09 * minf(ratio, 1.0)
+	body_root.rotation.y = sin(_phase) * 0.1 * minf(ratio, 1.0)
+	head.rotation.z = -body_root.rotation.z * 0.7 + sin(_time * 1.3) * 0.03 * (1.0 - minf(ratio, 1.0))
+	head.rotation.y = -body_root.rotation.y * 0.6
+	var head_x := (0.4 if _sad else 0.0) - running * 0.15 + (-0.25 if _celebrating else 0.0)
+	head.rotation.x = lerpf(head.rotation.x, head_x, k)
+	head.position.y = HEAD_Y + sin(_phase * 2.0 - 0.9) * 0.012 * stride
+
+	_update_wobble(delta)
+	_update_eyes(delta)
+	if fish_tail:
+		fish_tail.rotation.y = sin(_time * (3.0 + ratio * 6.0)) * (0.2 + ratio * 0.25)
+
+
+## Floppy bits (ears, comb, hat, fish) follow a damped spring driven by bounce and turning.
+func _update_wobble(delta: float) -> void:
+	var vy := (body_root.position.y - _prev_body_y) / delta
+	_prev_body_y = body_root.position.y
+	var yaw := global_rotation.y if is_inside_tree() else 0.0
+	var turn := wrapf(yaw - _prev_yaw, -PI, PI) / delta
+	_prev_yaw = yaw
+	var target := Vector2(clampf(vy * 0.12, -0.5, 0.5) + _air * 0.35, clampf(turn * 0.05, -0.4, 0.4))
+	_spring_vel += ((target - _spring) * 110.0 - _spring_vel * 7.0) * delta
+	_spring += _spring_vel * delta
+	for w in wobblers:
+		var node: Node3D = w["node"]
+		var base: Vector3 = w["base"]
+		node.rotation = base + Vector3(_spring.x * w["amount"], 0.0, _spring.y * w["sway"])
+
+
+func _update_eyes(delta: float) -> void:
+	_blink_timer -= delta
+	if _blink_timer <= 0.0:
+		_blink_timer = randf_range(2.2, 5.0)
+		for eye in eyes:
+			var tw := eye.create_tween()
+			tw.tween_property(eye, "scale:y", 0.1, 0.06)
+			tw.tween_property(eye, "scale:y", 1.0, 0.08)
+	_look_timer -= delta
+	if _look_timer <= 0.0:
+		_look_timer = randf_range(0.8, 2.6)
+		_look_target = Vector2(randf_range(-1.0, 1.0), randf_range(-0.6, 0.5)) if randf() < 0.6 else Vector2.ZERO
+	_look = _look.lerp(_look_target, 1.0 - exp(-12.0 * delta))
+	for i in pupils.size():
+		var side := -1.0 if i == 0 else 1.0
+		pupils[i].position = Vector3(-0.014 * side + _look.x * 0.02, -0.008 + _look.y * 0.02, 0.03)
+		pupils[i].scale = Vector3.ONE * (1.12 if _celebrating else 1.0)
+
+
+func play_jump() -> void:
+	_squash(Vector3(0.85, 1.2, 0.85), 0.25)
+
+
+func play_land() -> void:
+	_squash(Vector3(1.22, 0.78, 1.22), 0.3)
+	_spring_vel.x -= 6.0
+
+
+func play_collect() -> void:
+	_hug = 0.45
+	_kill_fx()
+	_fx_tween = create_tween()
+	_fx_tween.tween_property(rig, "position:y", 0.35, 0.14).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	_fx_tween.parallel().tween_property(rig, "scale", Vector3(0.88, 1.1, 0.88) * RIG_SCALE, 0.14)
+	_fx_tween.tween_property(rig, "position:y", 0.0, 0.14).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	_fx_tween.tween_property(rig, "scale", Vector3(1.12, 0.84, 1.12) * RIG_SCALE, 0.06)
+	_fx_tween.tween_property(rig, "scale", Vector3.ONE * RIG_SCALE, 0.25).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+
+func play_celebrate() -> void:
+	_celebrating = true
+	_kill_fx()
+	_fx_tween = create_tween().set_loops()
+	_fx_tween.tween_property(rig, "position:y", 0.45, 0.2).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	_fx_tween.tween_property(rig, "position:y", 0.0, 0.2).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	_fx_tween.tween_property(rig, "scale", Vector3(1.12, 0.86, 1.12) * RIG_SCALE, 0.06)
+	_fx_tween.tween_property(rig, "scale", Vector3.ONE * RIG_SCALE, 0.12)
+
+
+func play_sad() -> void:
+	_sad = true
+
+
+func _squash(target: Vector3, duration: float) -> void:
+	_kill_fx()
+	var base := Vector3.ONE * RIG_SCALE
+	_fx_tween = create_tween()
+	_fx_tween.tween_property(rig, "scale", target * RIG_SCALE, duration * 0.3).set_ease(Tween.EASE_OUT)
+	_fx_tween.tween_property(rig, "scale", base, duration * 0.7).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+
+func _kill_fx() -> void:
+	if _fx_tween and _fx_tween.is_valid():
+		_fx_tween.kill()
+	rig.position.y = 0.0
+	rig.scale = Vector3.ONE * RIG_SCALE

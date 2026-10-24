@@ -1,0 +1,43 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/player_controller.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/visual/human_model.gd" id="2"]
+[ext_resource type="Resource" path="res://assets/config/default_config.tres" id="3"]
+
+[sub_resource type="CapsuleShape3D" id="body"]
+radius = 0.35
+height = 1.5
+
+[sub_resource type="SphereShape3D" id="camera_probe"]
+radius = 0.3
+
+[node name="Player" type="CharacterBody3D"]
+collision_layer = 2
+collision_mask = 11
+floor_snap_length = 0.3
+script = ExtResource("1")
+config = ExtResource("3")
+display_name = "Vos"
+team_color = Color(0.95, 0.32, 0.26, 1)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 0)
+shape = SubResource("body")
+
+[node name="Model" type="Node3D" parent="."]
+script = ExtResource("2")
+costume = 0
+
+[node name="CameraPivot" type="Node3D" parent="."]
+
+[node name="SpringArm3D" type="SpringArm3D" parent="CameraPivot"]
+collision_mask = 1
+shape = SubResource("camera_probe")
+spring_length = 10.5
+margin = 0.2
+
+[node name="Camera3D" type="Camera3D" parent="CameraPivot/SpringArm3D"]
+current = true
+fov = 60.0
+near = 0.1
+far = 300.0

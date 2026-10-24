@@ -1,0 +1,52 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/npc_ai.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/visual/human_model.gd" id="2"]
+[ext_resource type="Resource" path="res://assets/config/default_config.tres" id="3"]
+[ext_resource type="Resource" path="res://assets/config/npc_rosa.tres" id="4"]
+
+[sub_resource type="CapsuleShape3D" id="body"]
+radius = 0.35
+height = 1.5
+
+[node name="NPC" type="CharacterBody3D"]
+collision_layer = 2
+collision_mask = 11
+floor_snap_length = 0.3
+script = ExtResource("1")
+profile = ExtResource("4")
+config = ExtResource("3")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 0)
+shape = SubResource("body")
+
+[node name="Model" type="Node3D" parent="."]
+script = ExtResource("2")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
+path_desired_distance = 0.7
+target_desired_distance = 0.45
+radius = 0.4
+height = 1.6
+path_max_distance = 3.0
+
+[node name="NameTag" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.4, 0)
+pixel_size = 0.004
+billboard = 1
+double_sided = false
+text = "Rival"
+font_size = 64
+outline_size = 18
+outline_modulate = Color(0.25, 0.16, 0.1, 0.85)
+
+[node name="Alert" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.8, 0)
+pixel_size = 0.006
+billboard = 1
+modulate = Color(1, 0.8, 0.2, 1)
+text = "!"
+font_size = 96
+outline_size = 24
+outline_modulate = Color(0.35, 0.2, 0.08, 1)

@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="NPCProfile" format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/npc_profile.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Coco"
+costume = 2
+team_color = Color(0.85, 0.75, 0.2, 1)
+move_speed = 6.8
+detection_radius = 12.0
+reaction_time = 0.4
+mistake_chance = 0.1
+rival_awareness = 0.7
+aggression = 0.3
+dodge_skill = 0.85
+aim_skill = 0.8

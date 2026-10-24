@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="NPCProfile" format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/npc_profile.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Bruno"
+costume = 1
+team_color = Color(0.3, 0.8, 0.45, 1)
+move_speed = 6.2
+detection_radius = 11.0
+reaction_time = 0.5
+mistake_chance = 0.15
+rival_awareness = 0.4
+aggression = 0.85
+dodge_skill = 0.55
+aim_skill = 0.6

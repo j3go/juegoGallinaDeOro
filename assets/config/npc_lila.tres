@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="NPCProfile" format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/npc_profile.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+display_name = "Lila"
+costume = 2
+team_color = Color(0.42, 0.48, 0.92, 1)
+move_speed = 5.9
+detection_radius = 11.0
+notice_chance = 0.92
+hearing_radius = 12.0
+hearing_chance = 0.65
+reaction_time = 0.4
+mistake_chance = 0.08
+rival_awareness = 0.8
+chicken_follow_chance = 0.25
+aggression = 0.4
+dodge_skill = 0.9
+aim_skill = 0.85

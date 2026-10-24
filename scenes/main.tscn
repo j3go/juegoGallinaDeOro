@@ -1,0 +1,71 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/game_manager.gd" id="1"]
+[ext_resource type="Resource" path="res://assets/config/default_config.tres" id="2"]
+[ext_resource type="Script" path="res://scripts/egg_manager.gd" id="4"]
+[ext_resource type="PackedScene" path="res://scenes/characters/chicken.tscn" id="5"]
+[ext_resource type="PackedScene" path="res://scenes/characters/player.tscn" id="6"]
+[ext_resource type="PackedScene" path="res://scenes/characters/npc.tscn" id="7"]
+[ext_resource type="Resource" path="res://assets/config/npc_rosa.tres" id="8"]
+[ext_resource type="Resource" path="res://assets/config/npc_tomas.tres" id="9"]
+[ext_resource type="Resource" path="res://assets/config/npc_lila.tres" id="10"]
+[ext_resource type="PackedScene" path="res://scenes/ui/hud.tscn" id="11"]
+[ext_resource type="PackedScene" path="res://scenes/ui/results.tscn" id="12"]
+[ext_resource type="PackedScene" path="res://scenes/ui/main_menu.tscn" id="13"]
+[ext_resource type="Script" path="res://scripts/game_clock.gd" id="14"]
+[ext_resource type="Script" path="res://scripts/grab_system.gd" id="15"]
+[ext_resource type="Script" path="res://scripts/item_manager.gd" id="16"]
+[ext_resource type="Resource" path="res://assets/config/npc_bruno.tres" id="17"]
+[ext_resource type="Resource" path="res://assets/config/npc_coco.tres" id="18"]
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1")
+config = ExtResource("2")
+
+[node name="Clock" type="Node" parent="."]
+script = ExtResource("14")
+
+[node name="GrabSystem" type="Node3D" parent="."]
+script = ExtResource("15")
+
+[node name="ItemManager" type="Node3D" parent="."]
+script = ExtResource("16")
+config = ExtResource("2")
+
+[node name="EggManager" type="Node3D" parent="."]
+script = ExtResource("4")
+config = ExtResource("2")
+
+[node name="Chicken" parent="." instance=ExtResource("5")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, -3)
+
+[node name="Player" parent="." instance=ExtResource("6")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.05, 8)
+
+[node name="NPCs" type="Node3D" parent="."]
+
+[node name="Rosa" parent="NPCs" instance=ExtResource("7")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.8, 0.05, 8.4)
+profile = ExtResource("8")
+
+[node name="Tomas" parent="NPCs" instance=ExtResource("7")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.8, 0.05, 8.4)
+profile = ExtResource("9")
+
+[node name="Lila" parent="NPCs" instance=ExtResource("7")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.5, 0.05, 7.5)
+profile = ExtResource("10")
+
+[node name="Bruno" parent="NPCs" instance=ExtResource("7")]
+profile = ExtResource("17")
+
+[node name="Coco" parent="NPCs" instance=ExtResource("7")]
+profile = ExtResource("18")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="HUD" parent="UI" instance=ExtResource("11")]
+
+[node name="Results" parent="UI" instance=ExtResource("12")]
+
+[node name="MainMenu" parent="UI" instance=ExtResource("13")]
