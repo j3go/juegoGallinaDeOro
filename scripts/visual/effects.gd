@@ -52,6 +52,81 @@ static func gas_puff(parent: Node, pos: Vector3, direction: Vector3) -> void:
 	p.emitting = true
 
 
+## Big comic explosion: white-hot flash, fireballs, dark smoke, a shock ring and a light flash.
+static func explosion(parent: Node, pos: Vector3, radius: float) -> void:
+	var flash := MeshInstance3D.new()
+	flash.mesh = Toon.sphere(1.0, 24, 12)
+	var flash_mat := StandardMaterial3D.new()
+	flash_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	flash_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	flash_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	flash_mat.albedo_color = Color(1.0, 0.85, 0.5, 0.9)
+	flash.material_override = flash_mat
+	flash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(flash)
+	flash.global_position = pos
+	flash.scale = Vector3.ONE * 0.2
+	var tw := flash.create_tween().set_parallel()
+	tw.tween_property(flash, "scale", Vector3.ONE * radius * 0.8, 0.22).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	tw.tween_property(flash_mat, "albedo_color:a", 0.0, 0.3).set_delay(0.08)
+	tw.chain().tween_callback(flash.queue_free)
+
+	var fire := _burst(parent, pos, 26, 0.6)
+	fire.mesh = Toon.sphere(0.22, 8, 4)
+	fire.material_override = Toon.emissive(Color(1.0, 0.5, 0.12), 3.0)
+	fire.direction = Vector3.UP
+	fire.spread = 180.0
+	fire.initial_velocity_min = 3.0
+	fire.initial_velocity_max = 6.5
+	fire.gravity = Vector3(0, 2.0, 0)
+	fire.damping_min = 5.0
+	fire.damping_max = 8.0
+	fire.scale_amount_max = 1.8
+	fire.emitting = true
+
+	var smoke := _burst(parent, pos + Vector3.UP * 0.3, 16, 1.4)
+	smoke.mesh = Toon.sphere(0.3, 8, 4)
+	smoke.material_override = Toon.mat(Color(0.25, 0.22, 0.22), 1.0, 0.0, 0.0)
+	smoke.direction = Vector3.UP
+	smoke.spread = 60.0
+	smoke.initial_velocity_min = 1.0
+	smoke.initial_velocity_max = 2.5
+	smoke.gravity = Vector3(0, 1.2, 0)
+	smoke.damping_min = 1.5
+	smoke.damping_max = 2.5
+	smoke.scale_amount_min = 1.0
+	smoke.scale_amount_max = 2.0
+	smoke.emitting = true
+
+	_ring(parent, pos, Color(1.0, 0.6, 0.25))
+	dust_puff(parent, Vector3(pos.x, 0.0, pos.z), 14)
+
+	var light := OmniLight3D.new()
+	light.light_color = Color(1.0, 0.6, 0.25)
+	light.light_energy = 8.0
+	light.omni_range = radius * 3.0
+	parent.add_child(light)
+	light.global_position = pos + Vector3.UP * 0.5
+	var lt := light.create_tween()
+	lt.tween_property(light, "light_energy", 0.0, 0.5).set_ease(Tween.EASE_IN)
+	lt.tween_callback(light.queue_free)
+
+
+## Little white bursts flying off two characters straining against each other.
+static func effort_burst(parent: Node, pos: Vector3) -> void:
+	var p := _burst(parent, pos, 6, 0.35)
+	p.material_override = Toon.glow_dot(Color(1.0, 1.0, 0.95))
+	p.mesh = _quad(0.09)
+	p.direction = Vector3.UP
+	p.spread = 70.0
+	p.initial_velocity_min = 1.6
+	p.initial_velocity_max = 2.6
+	p.gravity = Vector3.ZERO
+	p.damping_min = 4.0
+	p.damping_max = 6.0
+	p.emitting = true
+
+
 ## Column of light plus sparkles, used where the chicken teleports out and back in.
 static func teleport_flash(parent: Node, pos: Vector3, color: Color = Color(0.75, 0.45, 1.0)) -> void:
 	sparkle_burst(parent, pos + Vector3.UP * 0.6, color, 34)

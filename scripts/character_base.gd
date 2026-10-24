@@ -50,6 +50,9 @@ var _bubble: MeshInstance3D
 var _stars: Node3D
 var _effort_arrow: Node3D
 var _tug_dust_at := 0.0
+var _effort_at := 0.0
+var _dazed_until := -1.0
+var _was_dazed := false
 
 @onready var model: HumanModel = $Model
 
@@ -71,6 +74,11 @@ func now() -> float:
 
 func is_down() -> bool:
 	return now() < _down_until
+
+
+## Thrown to the ground at the end of a grab: lying there with stars until it gets up.
+func is_dazed() -> bool:
+	return now() < _dazed_until
 
 
 func is_recovering() -> bool:
@@ -271,11 +279,47 @@ func grab_started(initiator: bool) -> void:
 
 ## Called by GrabSystem when a link involving this character ends.
 func grab_ended() -> void:
-	if is_linked() or is_down():
+	if is_linked() or is_down() or is_dazed():
 		return
 	model.play_grab_release()
 	if ctx:
 		Effects.dust_puff(ctx.world_root, global_position, 6)
+
+
+## The grab ran out and `thrower` slams this character to the ground: it flies back a little,
+## lands on its back and stays dazed (no moving or acting, eggs kept). Returns false if it
+## can't be thrown (immortal, already down or the stun is disabled).
+func throw_down(thrower: CharacterBase) -> bool:
+	if config.grab_throw_stun <= 0.0 or is_immortal() or is_down():
+		return false
+	var away := global_position - thrower.global_position
+	away.y = 0.0
+	away = away.normalized() if away.length() > 0.01 else -thrower.facing_direction()
+	_dazed_until = now() + config.grab_throw_stun
+	_stun_until = maxf(_stun_until, _dazed_until)
+	_motion = Vector3.ZERO
+	_external = away * 3.5 + Vector3.UP * 3.5
+	model.set_dazed(true)
+	# Fall backwards, away from the thrower, and bounce on landing.
+	model.rotation.y = atan2(-away.x, -away.z)
+	var tw := model.create_tween()
+	tw.tween_property(model, "rotation:x", -1.5, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(model, "position:y", 0.3, 0.3)
+	tw.tween_callback(func() -> void:
+		if ctx:
+			Effects.dust_puff(ctx.world_root, global_position, 8))
+	Sfx.play_3d(self, Sfx.HIT, global_position, -4.0)
+	status_changed.emit(self)
+	return true
+
+
+## Won a grab: short cheer with the arms up.
+func cheer() -> void:
+	model.play_cheer(0.9)
+
+
+func facing_direction() -> Vector3:
+	return Vector3(sin(model.rotation.y), 0.0, cos(model.rotation.y))
 
 
 func set_active(active: bool) -> void:
@@ -355,7 +399,7 @@ func _face_direction(direction: Vector3, delta: float, turn_speed: float = 12.0)
 	var partners := grab_partners()
 	if not partners.is_empty():
 		direction = partners[0].global_position - global_position
-	if is_down() or Vector2(direction.x, direction.z).length_squared() < 0.0004:
+	if is_down() or is_dazed() or Vector2(direction.x, direction.z).length_squared() < 0.0004:
 		return
 	var target := atan2(direction.x, direction.z)
 	model.rotation.y = lerp_angle(model.rotation.y, target, 1.0 - exp(-turn_speed * delta))
@@ -403,12 +447,21 @@ func _build_status_visuals() -> void:
 
 func _update_status_visuals(delta: float) -> void:
 	var down := is_down()
-	if _was_down and not down:
+	if _was_down and not down and not is_dazed():
 		_get_up()
 	_was_down = down
-	_stars.visible = down
-	if down:
+	var dazed := is_dazed()
+	if _was_dazed and not dazed:
+		model.set_dazed(false)
+		if not down:
+			_get_up()
+	_was_dazed = dazed
+	_stars.visible = down or dazed
+	if _stars.visible:
 		_stars.rotation.y += delta * 6.0
+		# Lying on its back: the stars circle over the head, not over the feet.
+		var back := -facing_direction()
+		_stars.position = back * 0.95 + Vector3.UP * 0.75
 	# Blink while recovering so the protection is visible.
 	model.visible = not is_recovering() or int(now() * 10.0) % 2 == 0
 	_bubble.visible = is_immortal()
@@ -424,27 +477,44 @@ func _update_status_visuals(delta: float) -> void:
 	_update_grab_pose()
 
 
-## Tug-of-war: hands meet the rival halfway, lean back when pulling away, and get dragged
-## onto the belly when the chain moves towards the rival against this character's will.
+## Wrestling clinch: arms wrapped around the rival, heads pressed together and swaying. When the
+## grabber is winning it lifts the grabbed one off the ground (legs kicking); a grabber losing the
+## tug gets dragged onto its belly. Effort bursts fly off while both strain.
 func _update_grab_pose() -> void:
 	var partners := grab_partners()
 	if partners.is_empty() or is_down():
-		model.set_grab([], 0.0, 0.0)
+		model.set_grab([], 0.0, 0.0, 0.0)
 		return
-	var targets: Array[Vector3] = []
-	for p: CharacterBase in partners.slice(0, 2):
-		var mid := (global_position + p.global_position) * 0.5
-		targets.append(Vector3(mid.x, global_position.y + 0.68, mid.z))
 	var to_partner := partners[0].global_position - global_position
 	to_partner.y = 0.0
 	to_partner = to_partner.normalized()
+	var targets: Array[Vector3] = []
+	if partners.size() == 1:
+		# Both arms around the rival's sides (a little behind them), lifted if the rival is up.
+		var p := partners[0]
+		var side := Vector3.UP.cross(to_partner)
+		var height := global_position.y + 0.68 + p.model.lift_amount() * 0.45
+		for s: float in [-1.0, 1.0]:
+			var hand := p.global_position + side * s * 0.24 + to_partner * 0.06
+			targets.append(Vector3(hand.x, height, hand.z))
+	else:
+		for p: CharacterBase in partners.slice(0, 2):
+			var mid := (global_position + p.global_position) * 0.5
+			targets.append(Vector3(mid.x, global_position.y + 0.68, mid.z))
 	var pull := pull_force().dot(to_partner)
 	var strain := clampf(0.45 - pull, 0.0, 1.0)
 	var dragged := 0.0
 	if pull < 0.3:
 		dragged = clampf((chain_velocity.dot(to_partner) - 0.6) / 1.6, 0.0, 1.0)
-	model.set_grab(targets, strain, dragged)
+	# Only being grabbed: the winner lifts you up instead of dragging you on the floor.
+	var lifted := dragged if outgoing_link == null else 0.0
+	model.set_grab(targets, strain, dragged - lifted, lifted)
+	if not ctx:
+		return
 	# Dust kicked up by heels digging in or a body sliding on the ground.
-	if ctx and now() >= _tug_dust_at and (dragged > 0.5 or (strain > 0.8 and horizontal_speed() > 0.5)):
+	if now() >= _tug_dust_at and (dragged - lifted > 0.5 or (strain > 0.8 and horizontal_speed() > 0.5)):
 		_tug_dust_at = now() + 0.2
 		Effects.dust_puff(ctx.world_root, global_position, 3)
+	if outgoing_link != null and now() >= _effort_at:
+		_effort_at = now() + randf_range(0.35, 0.6)
+		Effects.effort_burst(ctx.world_root, (global_position + partners[0].global_position) * 0.5 + Vector3.UP * 1.25)

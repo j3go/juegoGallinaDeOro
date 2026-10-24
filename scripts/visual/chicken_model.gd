@@ -36,6 +36,9 @@ var _pose := 0.0
 ## 0 = calm, 1 = running around like crazy (head shaking, nonstop flapping). Set by the AI.
 var frenzy_target := 0.0
 var _frenzy := 0.0
+## 0 = on the ground, 1 = flying (big wingbeats, legs tucked back, body leaning forward).
+var fly_target := 0.0
+var _fly := 0.0
 
 ## Lean used by the shooting pose.
 const POSE_LEAN := -2.2
@@ -119,10 +122,11 @@ func animate(delta: float, speed: float) -> void:
 	_phase += delta * (5.0 + speed * 4.0) if moving else delta * 1.5
 	var k := 1.0 - exp(-10.0 * delta)
 	_frenzy = move_toward(_frenzy, frenzy_target, delta * 3.0)
+	_fly = move_toward(_fly, fly_target, delta * 4.0)
 
 	if not _busy and _pose <= 0.001:
 		body_root.rotation.z = lerpf(body_root.rotation.z, sin(_phase) * 0.13 * amount, k)
-		body_root.rotation.x = lerpf(body_root.rotation.x, 0.1 * amount + 0.25 * _frenzy + _peck * 0.5, k)
+		body_root.rotation.x = lerpf(body_root.rotation.x, 0.1 * amount + 0.25 * _frenzy + 0.4 * _fly + _peck * 0.5, k)
 		body_root.position.y = BODY_Y + absf(sin(_phase)) * (0.05 + 0.06 * _frenzy) * amount + sin(_time * 2.2) * 0.008
 		head.position.z = head_rest_z + sin(_phase * 2.0) * 0.03 * amount
 	# Crazy run: the head shakes around (the wings flap nonstop, see below).
@@ -134,15 +138,19 @@ func animate(delta: float, speed: float) -> void:
 		var side := -1.0 if i == 0 else 1.0
 		if _pose <= 0.001:
 			legs[i].rotation.x = lerpf(legs[i].rotation.x, sin(_phase) * 0.6 * side * amount, k)
+			# Flying: legs tucked back under the tail.
+			legs[i].rotation.x = lerpf(legs[i].rotation.x, 1.2 + sin(_time * 4.0 + i) * 0.1, _fly)
 
 	_flap_boost = maxf(_flap_boost - delta, 0.0)
 	# Wings beat twice per stride, harder the faster it goes, and go wild in a crazy run.
 	var beat := sin(_phase * 2.0) * 0.5 + 0.5
 	var frantic := sin(_time * 26.0) * 0.5 + 0.5
 	var flap := 0.08 + (sin(_time * 30.0) * 0.5 + 0.5) * 0.7 * minf(_flap_boost * 2.0, 1.0) \
-			+ (0.15 + 0.35 * beat) * amount + frantic * 0.9 * _frenzy
+			+ (0.15 + 0.35 * beat) * amount + frantic * 0.9 * _frenzy \
+			+ (0.4 + (sin(_time * 16.0) * 0.5 + 0.5) * 1.1) * _fly
 	var sweep := sin(_phase * 2.0 + 0.8) * 0.25 * amount
-	var tip_lag := (sin(_phase * 2.0 - 1.2) * 0.5 + 0.5) * 0.4 * amount + (sin(_time * 26.0 - 1.2) * 0.5 + 0.5) * 0.5 * _frenzy
+	var tip_lag := (sin(_phase * 2.0 - 1.2) * 0.5 + 0.5) * 0.4 * amount + (sin(_time * 26.0 - 1.2) * 0.5 + 0.5) * 0.5 * _frenzy \
+			+ (sin(_time * 16.0 - 1.2) * 0.5 + 0.5) * 0.6 * _fly
 	for i in wings.size():
 		var side := -1.0 if i == 0 else 1.0
 		wings[i].rotation.z = side * flap

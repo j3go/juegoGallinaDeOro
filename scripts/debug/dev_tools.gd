@@ -255,6 +255,9 @@ func _mechanics_test() -> void:
 	var g := _game
 	g.chicken.stop_attacking()
 	g.item_manager.stop()
+	# The rule checks below expect plain eggs; special eggs get their own checks at the end.
+	g.config.explosive_egg_chance = 0.0
+	g.config.erratic_egg_chance = 0.0
 	var cs: Array[CharacterBase] = g.competitors
 	for c in cs:
 		c.scripted = true
@@ -354,7 +357,12 @@ func _mechanics_test() -> void:
 	_check("El agarre dura 3 s", absf(duration - 3.0) < 0.05, "(%.2f s)" % duration)
 	_check("Siguiente agarre a los 13 s del inicio", is_equal_approx(a.grab_ready_at - t0, 13.0), "(%.2f s)" % (a.grab_ready_at - t0))
 	_check("No se puede volver a agarrar durante el enfriamiento", not a.try_grab())
-	_check("Al quedar libre sí puede recoger", b.try_pickup() and b.score == 1)
+	_check("Al soltarse, el agarrado queda mareado en el piso", b.is_dazed() and not b.can_act() and not b.try_pickup())
+	_check("El mareo no hace soltar huevos", b.score == 0 and egg.is_available())
+	await get_tree().create_timer(g.config.grab_throw_stun + 0.1).timeout
+	b.global_position = egg.global_position - Vector3(0.6, 0, 0)
+	await get_tree().physics_frame
+	_check("Al pasar el mareo sí puede recoger", b.try_pickup() and b.score == 1)
 
 	# 5. Push moves but never drops eggs.
 	b.score = 3
@@ -419,6 +427,32 @@ func _mechanics_test() -> void:
 	await get_tree().create_timer(g.config.aim_time + g.config.lock_time + 1.5).timeout
 	_check("El disparo alcanza al primero en la línea (no al objetivo)", blocker.score == 0 and victim.score == 4,
 			"(interpuesto=%d, líder=%d)" % [blocker.score, victim.score])
+	g.chicken.stop_attacking()
+
+	# 10. Explosive egg: knocks down everyone in the blast, not those far away.
+	await get_tree().create_timer(g.config.knockdown_time + g.config.recovery_time + 0.2).timeout
+	var p := Vector3(-5, 0.1, 6)
+	var near_a: CharacterBase = cs[1]
+	var near_b: CharacterBase = cs[2]
+	var far: CharacterBase = cs[3]
+	put.call([near_a, near_b, far], [p, p + Vector3(0, 0, 1.2), p + Vector3(6, 0, 0)])
+	for c in [near_a, near_b, far]:
+		c.score = 2
+	await get_tree().physics_frame
+	var bomb := EggProjectile.new()
+	g.add_child(bomb)
+	bomb.launch(p + Vector3(-2.5, 0.75, 0), Vector3.RIGHT, g.ctx, [], EggProjectile.Kind.EXPLOSIVE)
+	await get_tree().create_timer(0.5).timeout
+	_check("Huevo explosivo: derriba a todos en la explosión", near_a.is_down() and near_b.is_down() and near_a.score == 0 and near_b.score == 0)
+	_check("Huevo explosivo: no afecta a los lejanos", not far.is_down() and far.score == 2)
+
+	# 11. Erratic egg: keeps changing direction.
+	var crazy := EggProjectile.new()
+	g.add_child(crazy)
+	crazy.launch(Vector3(4, 0.75, 4), Vector3.FORWARD, g.ctx, [], EggProjectile.Kind.ERRATIC)
+	await get_tree().create_timer(0.5).timeout
+	var turned := not is_instance_valid(crazy) or crazy.direction.angle_to(Vector3.FORWARD) > 0.05
+	_check("Huevo loco: cambia de dirección al azar", turned)
 
 	print("[rules] fallas: %d" % _checks_failed)
 	get_tree().quit()

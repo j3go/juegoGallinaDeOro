@@ -24,6 +24,18 @@ extends Resource
 @export var roam_crazy_speed_min := 4.5
 @export var roam_crazy_speed_max := 8.0
 @export_range(0.0, 1.0) var roam_crazy_chance := 0.45
+## Chance that a roaming pick is a flight across the map, and how the flight goes.
+@export_range(0.0, 1.0) var fly_chance := 0.2
+@export var fly_height := 3.5
+@export var fly_speed := 6.0
+## Chance of dropping an explosive egg halfway through a flight.
+@export_range(0.0, 1.0) var fly_bomb_chance := 0.5
+## Special eggs: each attack may fire an explosive egg (knocks down everyone in the blast) or an
+## erratic one (slower, keeps changing direction at random).
+@export_range(0.0, 1.0) var explosive_egg_chance := 0.2
+@export_range(0.0, 1.0) var erratic_egg_chance := 0.2
+@export var explosion_radius := 2.6
+@export var erratic_egg_speed_factor := 0.7
 ## Seconds between teleports (only between attacks).
 @export var teleport_interval_min := 7.0
 @export var teleport_interval_max := 14.0
@@ -62,6 +74,11 @@ extends Resource
 @export_range(0.0, 1.0) var grabbed_pull_weight := 0.3
 ## Joint force doesn't multiply speed without limit.
 @export var chain_max_speed := 4.0
+## On grabbing, both are pulled together to this distance to wrestle in a clinch.
+@export var grab_clinch_distance := 0.8
+## When a grab runs out, the grabbed one is thrown to the ground and stays dazed this long
+## (can't move or act, keeps its eggs). Immortal characters aren't thrown. 0 disables it.
+@export var grab_throw_stun := 1.1
 
 @export_group("Objetos")
 @export var first_wave_delay := 15.0

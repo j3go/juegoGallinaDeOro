@@ -102,9 +102,13 @@ var _fx_tween: Tween
 var _grab_targets: Array[Vector3] = []
 var _grab_strain_target := 0.0
 var _grab_dragged_target := 0.0
+var _grab_lift_target := 0.0
 var _grab := 0.0
 var _strain := 0.0
 var _dragged := 0.0
+var _lift := 0.0
+var _dazed := false
+var _cheer_until := 0.0
 var _squint := 0.0
 var _stretch: Array[float] = [1.0, 1.0]
 var _recoil := 0.0
@@ -437,7 +441,9 @@ func animate(delta: float, speed: float, on_floor: bool) -> void:
 	_grab = move_toward(_grab, 0.0 if _grab_targets.is_empty() else 1.0, delta * 7.0)
 	_strain = lerpf(_strain, _grab_strain_target, k * 0.5)
 	_dragged = lerpf(_dragged, _grab_dragged_target, k * 0.4)
+	_lift = lerpf(_lift, 0.0 if _grab_targets.is_empty() else _grab_lift_target, k * 0.4)
 	var tug := _grab * _strain * (1.0 - _dragged)
+	var cheering := _celebrating or _time < _cheer_until
 
 	# Legs: swing from the hip and lift the foot on the forward stroke.
 	var stride := minf(ratio, 1.25)
@@ -451,7 +457,9 @@ func animate(delta: float, speed: float, on_floor: bool) -> void:
 			# Tug: one foot planted ahead, the other pushing back; kicking when dragged.
 			var brace := (-0.55 if i == 0 else 0.5) * (0.5 + _strain * 0.5) + s * 0.3
 			var kick := 0.45 + sin(_time * 17.0 + i * PI) * 0.3
-			leg = lerpf(leg, lerpf(brace, kick, _dragged), _grab)
+			leg = lerpf(leg, lerpf(brace, kick, maxf(_dragged, _lift)), _grab)
+		if _dazed:
+			leg = 0.25 + sin(_time * 5.0 + i * 2.0) * 0.08
 		hips[i].rotation.x = lerpf(hips[i].rotation.x, leg, k)
 		var lift := maxf(0.0, -sin(_phase + (0.0 if i == 0 else PI))) * 0.07 * stride
 		hips[i].position.y = HIP_Y + lift * (1.0 - _air)
@@ -481,9 +489,13 @@ func animate(delta: float, speed: float, on_floor: bool) -> void:
 			# Let go: arms fly up and out.
 			target_x = lerpf(target_x, -2.2, _recoil)
 			target_z = lerpf(target_z, side * 1.1, _recoil)
-		if _celebrating:
+		if cheering:
 			target_x = -0.3
 			target_z = side * (2.6 + sin(_time * 12.0 + i * PI) * 0.35)
+		if _dazed:
+			# Flat on the back with the arms splayed out.
+			target_x = -0.3
+			target_z = side * (1.35 + sin(_time * 4.0 + i) * 0.1)
 		arms[i].rotation.x = lerpf(arms[i].rotation.x, target_x, k)
 		arms[i].rotation.z = lerpf(arms[i].rotation.z, target_z, k)
 		_set_stretch(i, lerpf(_stretch[i], stretch, k))
@@ -494,22 +506,34 @@ func animate(delta: float, speed: float, on_floor: bool) -> void:
 	body_root.position.y = HIP_Y + bounce + breathe
 	body_root.scale = Vector3(1.0 - breathe * 0.6, 1.0 + breathe, 1.0 - breathe * 0.6)
 	var lean := 0.1 * ratio + running * 0.22 + (0.28 if _sad else 0.0) - _air * 0.12
-	# Tug: lean back against the rival and tremble with the effort; recoil when let go.
-	lean = lerpf(lean, -0.12 - _strain * 0.3, _grab) - _recoil * 0.5
+	# Clinch: press forward head to head, or lean back when pulling away; tremble with the
+	# effort and sway side to side wrestling. Recoil when let go.
+	lean = lerpf(lean, 0.22 - _strain * 0.55, _grab) - _recoil * 0.5
+	lean = lerpf(lean, -0.2, _lift)
 	body_root.rotation.x = lerpf(body_root.rotation.x, lean, k)
 	body_root.position.x = sin(_time * 47.0) * 0.02 * tug
-	body_root.rotation.z = sin(_phase) * 0.09 * minf(ratio, 1.0) + sin(_time * 31.0) * 0.05 * tug
+	var wrestle := sin(_time * 7.0) * 0.1 * _grab * (1.0 - _lift)
+	body_root.rotation.z = sin(_phase) * 0.09 * minf(ratio, 1.0) + sin(_time * 31.0) * 0.05 * tug + wrestle
 	# Being dragged: fall forward onto the belly, still holding on.
 	rig.rotation.x = lerpf(rig.rotation.x, _grab * _dragged * 1.2, k * 0.6)
+	# Being lifted by the winner: feet off the ground, swinging around.
+	if _lift > 0.001:
+		rig.position.y = 0.45 * _lift
+		rig.rotation.z = sin(_time * 5.0) * 0.25 * _lift
+	elif rig.rotation.z != 0.0:
+		rig.rotation.z = 0.0
 	body_root.rotation.y = sin(_phase) * 0.1 * minf(ratio, 1.0)
 	head.rotation.z = -body_root.rotation.z * 0.7 + sin(_time * 1.3) * 0.03 * (1.0 - minf(ratio, 1.0))
 	head.rotation.y = -body_root.rotation.y * 0.6
-	var head_x := (0.4 if _sad else 0.0) - running * 0.15 + (-0.25 if _celebrating else 0.0) + tug * 0.15 - _dragged * _grab * 0.5
+	var head_x := (0.4 if _sad else 0.0) - running * 0.15 + (-0.25 if cheering else 0.0) + tug * 0.15 - _dragged * _grab * 0.5
 	head.rotation.x = lerpf(head.rotation.x, head_x, k)
+	if _dazed:
+		head.rotation.y = sin(_time * 3.0) * 0.35
 	head.position.y = HEAD_Y + sin(_phase * 2.0 - 0.9) * 0.012 * stride
 
 	_update_wobble(delta)
-	_update_eyes(delta, tug)
+	# Eyes squeezed shut while wrestling (not when lifted: then they go wide).
+	_update_eyes(delta, maxf(tug, _grab * 0.75 * (1.0 - _lift)))
 	if fish_tail:
 		fish_tail.rotation.y = sin(_time * (3.0 + ratio * 6.0)) * (0.2 + ratio * 0.25)
 
@@ -556,11 +580,13 @@ func _set_stretch(i: int, s: float) -> void:
 func _update_eyes(delta: float, tug: float) -> void:
 	# Squeezed "> <" eyes while pulling hard.
 	var was_squinting := _squint > 0.0
-	_squint = move_toward(_squint, smoothstep(0.3, 0.8, tug), delta * 6.0)
+	_squint = move_toward(_squint, 1.0 if _dazed else smoothstep(0.3, 0.8, tug), delta * 6.0)
 	if _squint > 0.0 or was_squinting:
 		for i in eyes.size():
 			eyes[i].scale.y = lerpf(1.0, 0.22, _squint)
-			eyes[i].rotation.z = (-1.0 if i == 0 else 1.0) * 0.5 * _squint
+			# Dazed: the squeezed eyes wobble around.
+			var dizzy := sin(_time * 8.0 + i * PI) * 0.5 if _dazed else 0.0
+			eyes[i].rotation.z = (-1.0 if i == 0 else 1.0) * 0.5 * _squint + dizzy
 	_blink_timer -= delta
 	if _blink_timer <= 0.0 and _squint == 0.0:
 		_blink_timer = randf_range(2.2, 5.0)
@@ -576,8 +602,8 @@ func _update_eyes(delta: float, tug: float) -> void:
 	for i in pupils.size():
 		var side := -1.0 if i == 0 else 1.0
 		pupils[i].position = Vector3(-0.014 * side + _look.x * 0.02, -0.008 + _look.y * 0.02, 0.03)
-		var wide := 1.12 if _celebrating else 1.0
-		if _surprise > 0.0 or _dragged * _grab > 0.5:
+		var wide := 1.12 if _celebrating or _time < _cheer_until else 1.0
+		if _surprise > 0.0 or _dragged * _grab > 0.5 or _lift > 0.5:
 			wide = 1.25
 		pupils[i].scale = Vector3.ONE * wide
 
@@ -612,13 +638,41 @@ func play_celebrate() -> void:
 	_fx_tween.tween_property(rig, "scale", Vector3.ONE * RIG_SCALE, 0.12)
 
 
-## Tug-of-war pose for this frame: `targets` are world points the hands reach for (one per rival,
-## at most two), `strain` how hard it pulls away (0..1) and `dragged` how much the rival is
-## winning and dragging it (0..1). An empty `targets` lets go.
-func set_grab(targets: Array[Vector3], strain: float, dragged: float) -> void:
+## Wrestling pose for this frame: `targets` are world points the hands reach for (one per arm),
+## `strain` how hard it pulls away (0..1), `dragged` how much it is being dragged on its belly
+## (0..1) and `lifted` how much the rival is lifting it off the ground (0..1).
+## An empty `targets` lets go.
+func set_grab(targets: Array[Vector3], strain: float, dragged: float, lifted: float) -> void:
 	_grab_targets = targets
 	_grab_strain_target = strain
 	_grab_dragged_target = dragged
+	_grab_lift_target = lifted
+
+
+## How high this character is currently lifted by a rival (0..1).
+func lift_amount() -> float:
+	return _lift
+
+
+## Lying dazed after being thrown: eyes squeezed and wobbling, arms splayed.
+func set_dazed(value: bool) -> void:
+	_dazed = value
+	if value:
+		_lift = 0.0
+		rig.position.y = 0.0
+		rig.rotation.z = 0.0
+		_spring_vel.x -= 8.0
+
+
+## Short victory cheer: a hop with both arms up.
+func play_cheer(duration: float) -> void:
+	_cheer_until = _time + duration
+	_kill_fx()
+	_fx_tween = create_tween()
+	_fx_tween.tween_property(rig, "position:y", 0.4, 0.18).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	_fx_tween.tween_property(rig, "position:y", 0.0, 0.18).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	_fx_tween.tween_property(rig, "scale", Vector3(1.15, 0.85, 1.15) * RIG_SCALE, 0.06)
+	_fx_tween.tween_property(rig, "scale", Vector3.ONE * RIG_SCALE, 0.3).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 
 
 ## Start of a grab: the grabber lunges forward, the grabbed one jumps in surprise.

@@ -46,7 +46,8 @@ func create_link(from: CharacterBase, to: CharacterBase) -> bool:
 	link.started = GameClock.now
 	link.ends = link.started + _config.grab_duration
 	# Keep the current distance as rope length so joining never makes anyone jump.
-	link.length = maxf(0.8, _flat(to.global_position - from.global_position).length())
+	# The rope is shorter than the gap, so the soft-rope fix pulls them into a clinch.
+	link.length = _config.grab_clinch_distance
 	links.append(link)
 	from.outgoing_link = link
 	to.incoming_links.append(link)
@@ -119,7 +120,7 @@ func pull_weight(c: CharacterBase) -> float:
 func _physics_process(_delta: float) -> void:
 	for l in links.duplicate():
 		if GameClock.now >= l.ends:
-			_end_link(l)
+			_end_link(l, true)
 	for c in _competitors:
 		c.in_chain = false
 		c.chain_velocity = Vector3.ZERO
@@ -138,11 +139,15 @@ func _physics_process(_delta: float) -> void:
 			l.to.chain_velocity -= fix * 0.5
 
 
-func _end_link(link: GrabLink) -> void:
+## `timed_out`: the grab ran its full time, so the grabber throws the grabbed one to the ground
+## (unless someone else is still holding them).
+func _end_link(link: GrabLink, timed_out: bool = false) -> void:
 	links.erase(link)
 	if link.from.outgoing_link == link:
 		link.from.outgoing_link = null
 	link.to.incoming_links.erase(link)
+	if timed_out and not link.to.is_linked() and link.to.throw_down(link.from):
+		link.from.cheer()
 	link.from.grab_ended()
 	link.to.grab_ended()
 	link.from.status_changed.emit(link.from)
