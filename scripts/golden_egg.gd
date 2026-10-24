@@ -50,6 +50,7 @@ func _on_landed() -> void:
 	egg_state = EggState.READY
 	model.play_land()
 	Effects.dust_puff(get_parent(), landing_position)
+	Sfx.play_3d(get_parent(), Sfx.EGG_PLOP, landing_position, -8.0, 0.2)
 
 
 ## Returns false if someone else already took it (the state flips synchronously, so two

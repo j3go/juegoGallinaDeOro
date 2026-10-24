@@ -25,6 +25,7 @@ var competitors: Array[CharacterBase] = []
 var level: Level
 var ctx := MatchContext.new()
 var _crowns: Array[Node3D] = []
+var sound_menu: SoundMenu
 
 @onready var egg_manager: EggManager = $EggManager
 @onready var item_manager: ItemManager = $ItemManager
@@ -38,6 +39,11 @@ var _crowns: Array[Node3D] = []
 
 
 func _ready() -> void:
+	AudioSettings.load_and_apply()
+	_start_music()
+	sound_menu = SoundMenu.new()
+	$UI.add_child(sound_menu)
+	sound_menu.closed.connect(_on_sound_menu_closed)
 	var args := OS.get_cmdline_user_args()
 	if "--autotest" in args:
 		_skip_menu = not "--show-menu" in args
@@ -54,6 +60,7 @@ func _ready() -> void:
 		c.score_changed.connect(_on_score_changed)
 	egg_manager.egg_collected.connect(_on_egg_collected)
 	main_menu.play_pressed.connect(start_match)
+	main_menu.sound_pressed.connect(open_sound_menu)
 	main_menu.level_selected.connect(_on_level_selected)
 	main_menu.setup_levels(LEVELS, selected_level)
 	results.play_again_pressed.connect(restart)
@@ -101,6 +108,43 @@ func _process(delta: float) -> void:
 	_update_crowns()
 	if time_left <= 0.0:
 		_finish_match()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	# Esc or O: sound menu (frees the mouse and pauses the match until it is closed).
+	if (event.is_action_pressed("sound_menu") or event.is_action_pressed("toggle_mouse")) and not sound_menu.visible:
+		get_viewport().set_input_as_handled()
+		open_sound_menu()
+
+
+## Calm comic war march (tools/gen_audio.py), looping on the "Music" bus. It keeps playing while
+## the game is paused so the music volume can be heard while adjusting it.
+func _start_music() -> void:
+	var path := "res://assets/music/battle_theme.ogg"
+	if not ResourceLoader.exists(path):
+		return
+	var stream := load(path) as AudioStreamOggVorbis
+	stream.loop = true
+	var music := AudioStreamPlayer.new()
+	music.name = "Music"
+	music.stream = stream
+	music.bus = "Music"
+	music.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(music)
+	music.play()
+
+
+## Sound settings. During a match the game pauses until the panel is closed.
+func open_sound_menu() -> void:
+	var pause := phase == Phase.PLAYING or phase == Phase.COUNTDOWN
+	get_tree().paused = pause
+	sound_menu.open(pause)
+
+
+func _on_sound_menu_closed() -> void:
+	get_tree().paused = false
+	if main_menu.visible:
+		main_menu.show_menu()
 
 
 func start_match() -> void:

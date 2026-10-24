@@ -17,6 +17,14 @@ func _prop(parent: Node3D, pos: Vector3, rot_y: float = 0.0, prop_name: String =
 	return n
 
 
+## Lets explosions wreck `prop`: each blast nearby uses up one of its `hits`; at zero it collapses
+## (see Destruction). Pieces built with the _solid_* helpers stay until then.
+func _breakable(prop: Node3D, hits: int) -> Node3D:
+	prop.set_meta("hits", hits)
+	prop.add_to_group(Destruction.GROUP)
+	return prop
+
+
 func _collider(parent: Node3D, shape: Shape3D, pos: Vector3, rot_deg: Vector3 = Vector3.ZERO) -> void:
 	var body := StaticBody3D.new()
 	body.collision_layer = 1
@@ -76,7 +84,7 @@ func _crate(parent: Node3D, pos: Vector3, rot_y: float, size: float, body_color:
 		Toon.part(c, Toon.box(Vector3(size, bar, bar)), frame, Vector3(0, size - bar * 0.5, x * (half - bar * 0.5)))
 	Toon.part(c, Toon.box(Vector3(size * 0.98, bar * 0.8, bar * 0.6)), frame, Vector3(0, half, half), Vector3(0, 0, 45))
 	_collider(c, _box_shape(Vector3.ONE * size), Vector3(0, half, 0))
-	return c
+	return _breakable(c, 1)
 
 
 func _barrel(parent: Node3D, pos: Vector3, body_color: Color, ring_color: Color, top_color: Color) -> Node3D:
@@ -86,7 +94,7 @@ func _barrel(parent: Node3D, pos: Vector3, body_color: Color, ring_color: Color,
 	for y: float in [0.2, 0.75]:
 		Toon.part(b, Toon.cylinder(0.375, 0.375, 0.06, 18), _m(ring_color), Vector3(0, y, 0))
 	_collider(b, _cyl_shape(0.4, 0.95), Vector3(0, 0.475, 0))
-	return b
+	return _breakable(b, 1)
 
 
 ## Flames, embers and a flickering light. Call `_animate_fires` every frame.
@@ -127,10 +135,14 @@ func _fire(parent: Node3D, pos: Vector3, size: float, light_range: float = 6.0) 
 
 func _animate_fires(time: float) -> void:
 	for fire in _fires:
+		if not is_instance_valid(fire.light):
+			continue
 		var seed_offset: float = fire.seed
 		var light: OmniLight3D = fire.light
 		light.light_energy = fire.energy * (0.8 + 0.22 * sin(time * 13.0 + seed_offset) + 0.12 * sin(time * 29.0 + seed_offset * 2.0))
 		var flames: Array = fire.flames
 		for i in flames.size():
+			if not is_instance_valid(flames[i]):
+				continue
 			var flame: Node3D = flames[i]
 			flame.scale.y = 1.0 + 0.25 * sin(time * (14.0 + i * 3.0) + seed_offset + i)

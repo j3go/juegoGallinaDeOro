@@ -307,8 +307,9 @@ func throw_down(thrower: CharacterBase) -> bool:
 	tw.parallel().tween_property(model, "position:y", 0.3, 0.3)
 	tw.tween_callback(func() -> void:
 		if ctx:
-			Effects.dust_puff(ctx.world_root, global_position, 8))
-	Sfx.play_3d(self, Sfx.HIT, global_position, -4.0)
+			Effects.dust_puff(ctx.world_root, global_position, 8)
+		Sfx.play_3d(self, Sfx.DIZZY, global_position, -6.0))
+	Sfx.play_3d(self, Sfx.THROW_DOWN, global_position, 0.0)
 	status_changed.emit(self)
 	return true
 
@@ -316,6 +317,7 @@ func throw_down(thrower: CharacterBase) -> bool:
 ## Won a grab: short cheer with the arms up.
 func cheer() -> void:
 	model.play_cheer(0.9)
+	Sfx.play_3d(self, Sfx.FANFARE, global_position, -8.0, 0.0)
 
 
 func facing_direction() -> Vector3:
@@ -355,7 +357,7 @@ func _knock_down(direction: Vector3) -> void:
 	var tw := model.create_tween()
 	tw.tween_property(model, "rotation:x", -1.45, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tw.parallel().tween_property(model, "position:y", 0.3, 0.25)
-	Sfx.play_3d(self, Sfx.HIT, global_position, 0.0)
+	Sfx.play_3d(self, Sfx.KNOCKDOWN, global_position, 0.0)
 	status_changed.emit(self)
 
 

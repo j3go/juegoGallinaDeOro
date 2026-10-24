@@ -111,7 +111,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_time += delta
 	_animate_fires(_time)
-	if _blades:
+	if is_instance_valid(_blades):
 		_blades.rotation.z += delta * 0.8
 	if _ufo:
 		_ufo.position.y = 10.0 + sin(_time * 1.3) * 0.4
@@ -131,14 +131,14 @@ func _process(delta: float) -> void:
 
 func _solid_box(parent: Node3D, size: Vector3, pos: Vector3, material: Material, rot_deg: Vector3 = Vector3.ZERO) -> MeshInstance3D:
 	_collider(parent, _box_shape(size), pos, rot_deg)
-	return Toon.part(parent, Toon.box(size), material, pos, rot_deg)
+	return _solid_mesh(Toon.part(parent, Toon.box(size), material, pos, rot_deg))
 
 
 func _solid_cyl(parent: Node3D, radius: float, height: float, pos: Vector3, material: Material,
 		top_radius: float = -1.0, segments: int = 16) -> MeshInstance3D:
 	_collider(parent, _cyl_shape(radius, height), pos)
 	var top := radius if top_radius < 0.0 else top_radius
-	return Toon.part(parent, Toon.cylinder(top, radius, height, segments), material, pos)
+	return _solid_mesh(Toon.part(parent, Toon.cylinder(top, radius, height, segments), material, pos))
 
 
 func _solid_sphere(parent: Node3D, radius: float, pos: Vector3, material: Material, scl: Vector3 = Vector3.ONE) -> MeshInstance3D:
@@ -146,7 +146,13 @@ func _solid_sphere(parent: Node3D, radius: float, pos: Vector3, material: Materi
 	# Colliders can't be squashed, so use the average radius of the ellipsoid.
 	shape.radius = radius * (scl.x + scl.y + scl.z) / 3.0
 	_collider(parent, shape, pos)
-	return Toon.part(parent, Toon.sphere(radius, 24, 12), material, pos, Vector3.ZERO, scl)
+	return _solid_mesh(Toon.part(parent, Toon.sphere(radius, 24, 12), material, pos, Vector3.ZERO, scl))
+
+
+## Marks the visible part of a collider: blasts scorch it but don't knock it off on its own.
+func _solid_mesh(mesh: MeshInstance3D) -> MeshInstance3D:
+	mesh.set_meta("solid", true)
+	return mesh
 
 
 ## Straight ramp/stairs from `bottom` up to `top` (both local), walkable by everyone.
@@ -334,7 +340,7 @@ func _build_duck_platform(pos: Vector3) -> void:
 	_collider(p, _box_shape(Vector3(6, 0.8, 0.1)), Vector3(0, h + 0.4, 2.9))
 
 	# Giant (slightly dirty) rubber duck sitting on the platform.
-	var duck := Toon.pivot(p, Vector3(-0.6, h, -1.0), "Duck")
+	var duck := _breakable(Toon.pivot(p, Vector3(-0.6, h, -1.0), "Duck"), 3)
 	duck.rotation_degrees.y = 25.0
 	var yellow := MapMaterials.spots(DUCK, DUCK_DIRT, 0.9, 0.16, 0.5, 0.0, 0.3, 0.08)
 	_solid_sphere(duck, 2.0, Vector3(0, 1.5, -0.3), yellow, Vector3(1.0, 0.78, 1.25))
@@ -357,7 +363,7 @@ func _build_duck_platform(pos: Vector3) -> void:
 
 
 func _build_windmill(pos: Vector3) -> void:
-	var w := _prop(self, pos, 15.0, "Windmill")
+	var w := _breakable(_prop(self, pos, 15.0, "Windmill"), 3)
 	var metal := _m(METAL_DARK)
 	var height := 7.0
 	for x: float in [-0.9, 0.9]:
@@ -400,7 +406,7 @@ func _build_hill_house(pos: Vector3) -> void:
 	# Stairs up the front of the hill.
 	_stairs(hill, Vector3(0.0, 0, 7.6), Vector3(0.0, top, 3.4), 1.6, _m(WOOD))
 	# House on top with lit windows.
-	var house := Toon.pivot(hill, Vector3(0, top, -0.8), "House")
+	var house := _breakable(Toon.pivot(hill, Vector3(0, top, -0.8), "House"), 3)
 	var wood := _m(WOOD)
 	_solid_box(house, Vector3(3.6, 2.5, 2.8), Vector3(0, 1.25, 0), wood)
 	for i in 6:
@@ -426,7 +432,7 @@ func _build_hill_house(pos: Vector3) -> void:
 
 
 func _build_water_tower(pos: Vector3) -> void:
-	var t := _prop(self, pos, 0.0, "WaterTower")
+	var t := _breakable(_prop(self, pos, 0.0, "WaterTower"), 3)
 	var height := 4.4
 	for x: float in [-1.0, 1.0]:
 		for z: float in [-1.0, 1.0]:
@@ -445,7 +451,7 @@ func _build_water_tower(pos: Vector3) -> void:
 
 
 func _build_silo(pos: Vector3) -> void:
-	var s := _prop(self, pos, -20.0, "Silo")
+	var s := _breakable(_prop(self, pos, -20.0, "Silo"), 4)
 	var mat := MapMaterials.spots(SILO, RUST, 0.9, 0.25, 0.9, 0.1, 0.15, 0.06)
 	_solid_cyl(s, 1.6, 7.0, Vector3(0, 3.5, 0), mat, -1.0, 24)
 	Toon.part(s, Toon.sphere(1.6, 24, 12), Toon.mat(METAL, 0.6, 0.4, 0.2), Vector3(0, 7.0, 0), Vector3.ZERO, Vector3(1, 0.7, 1))
@@ -470,7 +476,7 @@ func _chicken_emblem(parent: Node3D, pos: Vector3, size: float) -> void:
 
 
 func _build_barn(pos: Vector3) -> void:
-	var b := _prop(self, pos, 0.0, "Barn")
+	var b := _breakable(_prop(self, pos, 0.0, "Barn"), 4)
 	var red := Toon.mat(BARN_RED, 0.9, 0.0, 0.15)
 	var w := 6.0
 	var d := 5.0
@@ -510,7 +516,7 @@ func _build_barn(pos: Vector3) -> void:
 
 
 func _build_tractor(pos: Vector3, rot_y: float) -> void:
-	var t := _prop(self, pos, rot_y, "Tractor")
+	var t := _breakable(_prop(self, pos, rot_y, "Tractor"), 2)
 	var red := Toon.mat(TRACTOR, 0.7, 0.1, 0.2)
 	_solid_box(t, Vector3(1.1, 0.8, 2.6), Vector3(0, 1.0, 0.3), red)
 	_solid_box(t, Vector3(0.9, 0.6, 1.2), Vector3(0, 1.1, 1.6), red)
@@ -689,7 +695,7 @@ func _build_cow(pos: Vector3, rot_y: float) -> void:
 
 
 func _build_pipe(pos: Vector3) -> void:
-	var p := _prop(self, pos, 0.0, "Pipe")
+	var p := _breakable(_prop(self, pos, 0.0, "Pipe"), 3)
 	var outer := 1.4
 	var inner := 1.15
 	var length := 4.5
@@ -746,16 +752,17 @@ func _build_pen_fence() -> void:
 		var angle := rad_to_deg(atan2(-dir.y, dir.x))
 		var mid := (a + b) * 0.5
 		var posts := int(ceil(length / 1.2))
+		var fence := _breakable(Toon.pivot(root, Vector3.ZERO, "Fence"), 1)
 		for i in posts + 1:
 			var p := a + dir * length * float(i) / posts
-			Toon.part(root, Toon.box(Vector3(0.14, 1.1, 0.14)), _m(WOOD_DARK), Vector3(p.x, 0.55, p.y), Vector3(_rng.randf_range(-6, 6), angle, _rng.randf_range(-6, 6)))
+			Toon.part(fence, Toon.box(Vector3(0.14, 1.1, 0.14)), _m(WOOD_DARK), Vector3(p.x, 0.55, p.y), Vector3(_rng.randf_range(-6, 6), angle, _rng.randf_range(-6, 6)))
 		for h: float in [0.4, 0.8]:
-			Toon.part(root, Toon.box(Vector3(length, 0.12, 0.07)), _m(WOOD_OLD), Vector3(mid.x, h, mid.y), Vector3(0, angle, _rng.randf_range(-3, 3)))
-		_collider(root, _box_shape(Vector3(length, 1.0, 0.25)), Vector3(mid.x, 0.5, mid.y), Vector3(0, angle, 0))
+			Toon.part(fence, Toon.box(Vector3(length, 0.12, 0.07)), _m(WOOD_OLD), Vector3(mid.x, h, mid.y), Vector3(0, angle, _rng.randf_range(-3, 3)))
+		_collider(fence, _box_shape(Vector3(length, 1.0, 0.25)), Vector3(mid.x, 0.5, mid.y), Vector3(0, angle, 0))
 
 
 func _build_floodlight(pos: Vector3, aim_yaw: float) -> void:
-	var f := _prop(self, pos, aim_yaw, "Floodlight")
+	var f := _breakable(_prop(self, pos, aim_yaw, "Floodlight"), 2)
 	_solid_cyl(f, 0.1, 4.5, Vector3(0, 2.25, 0), _m(METAL_DARK), -1.0, 8)
 	Toon.part(f, Toon.box(Vector3(0.9, 0.5, 0.25)), _m(METAL_DARK), Vector3(0, 4.5, 0.2), Vector3(-25, 0, 0))
 	for x: float in [-0.22, 0.22]:
@@ -864,6 +871,7 @@ func _dead_tree(parent: Node3D, pos: Vector3, s: float, solid: bool) -> void:
 		Toon.part(twig, Toon.cylinder(0.01 * s, 0.03 * s, branch_len * 0.5, 5), bark, Vector3(0, branch_len * 0.25, 0))
 	if solid:
 		_collider(t, _cyl_shape(0.32 * s, height), Vector3(0, height * 0.5, 0))
+		_breakable(t, 1)
 
 
 func _toxic_puddle(pos: Vector3, size: float) -> void:
@@ -896,4 +904,4 @@ func _scatter_decor() -> void:
 	for i in blocks.size():
 		var p := Vector3(blocks[i][0], 0, blocks[i][1])
 		var s := _rng.randf_range(0.5, 0.8)
-		_solid_box(self, Vector3(s, s * 0.8, s), p + Vector3.UP * s * 0.4, MapMaterials.spots(STONE if i % 2 == 0 else STONE_DARK, STONE_DARK.darkened(0.35), 4.0, 0.45, 1.0, 0.0, 0.1, 0.25), Vector3(0, _rng.randf() * 90.0, 0))
+		_solid_box(_breakable(_prop(self, Vector3.ZERO, 0.0, "StoneBlock"), 2), Vector3(s, s * 0.8, s), p + Vector3.UP * s * 0.4, MapMaterials.spots(STONE if i % 2 == 0 else STONE_DARK, STONE_DARK.darkened(0.35), 4.0, 0.45, 1.0, 0.0, 0.1, 0.25), Vector3(0, _rng.randf() * 90.0, 0))

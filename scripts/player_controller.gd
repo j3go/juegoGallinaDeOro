@@ -48,11 +48,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		var motion := (event as InputEventMouseMotion).relative.limit_length(MAX_MOUSE_STEP)
 		_yaw -= motion.x * config.mouse_sensitivity
 		_pitch = clampf(_pitch - motion.y * config.mouse_sensitivity, PITCH_MIN, PITCH_MAX)
-	elif event.is_action_pressed("toggle_mouse"):
-		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-		elif is_active:
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	# Esc ("toggle_mouse") opens the sound menu instead, which frees the mouse (game_manager.gd).
 	elif event is InputEventMouseButton and event.pressed and is_active:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 

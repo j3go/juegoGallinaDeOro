@@ -15,6 +15,9 @@ const MAX_GROUND_OFFSET := 0.3
 
 ## Height of the walkable navmesh surface on open ground (slightly above y = 0).
 var _nav_ground_y := 0.0
+## Breakable props, debris and craters left by explosions.
+var destruction: Destruction
+var _rebake_pending := false
 
 @onready var nav_region: NavigationRegion3D = $NavigationRegion3D
 
@@ -22,6 +25,30 @@ var _nav_ground_y := 0.0
 func _ready() -> void:
 	# Props are built by their own script in _ready, which runs before this one.
 	nav_region.bake_navigation_mesh(false)
+	destruction = Destruction.new()
+	destruction.name = "Destruction"
+	add_child(destruction)
+	destruction.colliders_removed.connect(_rebake_navigation)
+	nav_region.bake_finished.connect(_on_bake_finished)
+
+
+## Explosion: wrecks breakable props in range and leaves a crater.
+func blast(center: Vector3, radius: float) -> void:
+	destruction.blast(center, radius)
+
+
+## A prop collapsed: rebake in the background so paths go through where it stood.
+func _rebake_navigation() -> void:
+	if nav_region.is_baking():
+		_rebake_pending = true
+		return
+	nav_region.bake_navigation_mesh(true)
+
+
+func _on_bake_finished() -> void:
+	if _rebake_pending:
+		_rebake_pending = false
+		_rebake_navigation.call_deferred()
 
 
 ## Waits until the navigation server has synced the baked mesh.

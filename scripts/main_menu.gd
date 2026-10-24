@@ -3,6 +3,7 @@ extends Control
 ## Title screen shown over the live level.
 
 signal play_pressed
+signal sound_pressed
 signal level_selected(index: int)
 
 var _title: Label
@@ -95,12 +96,17 @@ func _build() -> void:
 	_play.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_play.pressed.connect(func() -> void: play_pressed.emit())
 	box.add_child(_play)
+	var sound := UITheme.button("Sonido", 26)
+	sound.custom_minimum_size = Vector2(200, 56)
+	sound.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	sound.pressed.connect(func() -> void: sound_pressed.emit())
+	box.add_child(sound)
 
 	var help := UITheme.panel(Color(1, 0.98, 0.93, 0.85), 18, 18)
 	help.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	box.add_child(help)
 	var help_text := UITheme.label(
-			"WASD mover  ·  E recoger  ·  F / clic izq. empujar  ·  G / clic der. agarrar  ·  Q usar objeto\nLa gallina le dispara al que tenga más huevos: ¡mirá el láser y esquivá!  ·  Esc liberar el mouse",
+			"WASD mover  ·  E recoger  ·  F / clic izq. empujar  ·  G / clic der. agarrar  ·  Q usar objeto  ·  Esc sonido y pausa\nLa gallina le dispara al que tenga más huevos: ¡mirá el láser y esquivá!",
 			19, UITheme.TEXT_SOFT)
 	help_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	help.add_child(help_text)

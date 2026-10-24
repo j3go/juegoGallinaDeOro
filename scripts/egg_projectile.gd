@@ -61,6 +61,9 @@ func _build_visuals() -> void:
 	_trail.initial_velocity_max = 0.2
 	_trail.local_coords = false
 	add_child(_trail)
+	# Whistling while it flies: a burning fuse for the bomb, a wobbly "woo-woo" for the crazy one.
+	var loops := {Kind.NORMAL: Sfx.LOOP_EGG, Kind.EXPLOSIVE: Sfx.LOOP_FUSE, Kind.ERRATIC: Sfx.LOOP_ERRATIC}
+	Sfx.loop_3d(self, loops[kind], -4.0)
 	match kind:
 		Kind.EXPLOSIVE:
 			# Bomb egg: red band, a fuse on top and a flickering spark.
@@ -89,7 +92,7 @@ func _on_flying(delta: float) -> void:
 			# New random turn rate every fraction of a second, with the odd sharp kink.
 			if _time >= _turn_at:
 				_turn_at = _time + randf_range(0.15, 0.45)
-				_turn_rate = randf_range(-5.0, 5.0)
+				_turn_rate = randf_range(1.5, 5.0) * (1.0 if randf() < 0.5 else -1.0)
 				if randf() < 0.2:
 					direction = direction.rotated(Vector3.UP, randf_range(-1.2, 1.2))
 			direction = direction.rotated(Vector3.UP, _turn_rate * delta)
@@ -100,6 +103,7 @@ func _on_hit_character(character: CharacterBase) -> void:
 		_explode()
 		return
 	character.hit_by_egg(direction)
+	Sfx.play_3d(ctx.world_root, Sfx.EGG_CRACK, global_position, 0.0)
 	_fall_here(global_position - direction * 0.4)
 
 
@@ -107,7 +111,7 @@ func _on_hit_world() -> void:
 	if kind == Kind.EXPLOSIVE:
 		_explode()
 		return
-	Sfx.play_3d(ctx.world_root, Sfx.HIT, global_position, -6.0)
+	Sfx.play_3d(ctx.world_root, Sfx.EGG_SPLAT, global_position, -2.0)
 	_fall_here(global_position - direction * 0.6)
 
 
@@ -118,14 +122,14 @@ func _on_range_end() -> void:
 	_fall_here(global_position)
 
 
-## Knocks down every character in the blast (pushed away from the centre); the egg survives
-## the blast and drops as a pickup.
+## Knocks down every character in the blast (pushed away from the centre), wrecks nearby
+## structures and leaves a crater; the egg survives the blast and drops as a pickup.
 func _explode() -> void:
 	var center := global_position
 	var radius := ctx.config.explosion_radius
 	Effects.explosion(ctx.world_root, center, radius)
-	Sfx.play_3d(ctx.world_root, Sfx.HIT, center, 6.0)
-	Sfx.play_3d(ctx.world_root, Sfx.SHOOT, center, 4.0)
+	ctx.level.blast(center, radius)
+	Sfx.play_3d(ctx.world_root, Sfx.EXPLOSION, center, 6.0, 0.05)
 	for c in ctx.competitors:
 		var rel := c.global_position - center
 		if not c.is_active or absf(rel.y) > 2.5 or Vector2(rel.x, rel.z).length() > radius:

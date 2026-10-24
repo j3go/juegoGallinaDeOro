@@ -13,7 +13,7 @@ Juego 3D en Godot 4.7 (GDScript) basado en `diseno_granja_huevos_dorados_v0_1.pd
 - **Objetos (Q para usar):** cada 30 s aparece una oleada en el mapa. El **kunai** se lanza hacia donde mira la cámara y hace soltar huevos. La **inmortalidad** dura 5 s y evita derribos y pérdidas (igual te pueden empujar y agarrar). Se lleva un objeto por vez.
 
 ## Cómo jugar
-`godot --path .` o F5 en el editor. WASD mover, Shift correr, Espacio saltar, mouse cámara, Esc liberar el mouse.
+`godot --path .` o F5 en el editor. WASD mover, Shift correr, Espacio saltar, mouse cámara, Esc (u O) abre el menú de **sonido** y libera el mouse (también desde el botón *Sonido* del menú principal): volumen general, de música y de efectos (0 a 150 %) y silenciar; durante la partida pone el juego en pausa y la elección se guarda en `user://settings.cfg`.
 
 ## Ajustes
 - `assets/config/default_config.tres` (script `scripts/resources/game_config.gd`): duración, cadencia y velocidad de la gallina, pérdida por impacto, empujón, agarre (3 s / 10 s), fuerza de las cadenas, oleadas de objetos, kunai e inmortalidad.
@@ -28,3 +28,6 @@ Juego 3D en Godot 4.7 (GDScript) basado en `diseno_granja_huevos_dorados_v0_1.pd
 
 ## Pruebas automáticas
 `godot --headless --path . -- --autotest --duration=30 --timescale=4` juega una partida sin intervención y muestra el estado de la IA y las puntuaciones en consola. Otras opciones: `--mechanics-test` (comprueba las reglas del diseño), `--collision-audit` (revisa colisiones y aberturas), `--walk-test` (hace caminar al jugador por el mapa), `--cam=x,y,z,tx,ty,tz`, `--walk`, `--screenshot=archivo.png --shot-delay=8`, `--overview`, `--chicken-cam`, `--show-menu` (ver `scripts/debug/dev_tools.gd`).
+
+## Música y sonidos
+Todo el audio se sintetiza con `tools/gen_audio.py` (Python puro, sin dependencias; la música necesita `ffmpeg` para el `.ogg`): `python3 tools/gen_audio.py` regenera `assets/sounds/*.wav` y `assets/music/battle_theme.ogg`. La música es una marcha de guerra en re menor (taikos, redoblante, cuerdas, metales, coro) en bucle sobre el bus *Music*; los efectos van por el bus *SFX*: pedos al disparar la gallina, silbido, crack y bonk de los huevos, zumbido y golpe del kunai, explosiones, cacareos y canto de gallo, aleteo, teletransporte, pajaritos del mareo y más. Cada sonido es una función del script, así que se puede retocar y regenerar.

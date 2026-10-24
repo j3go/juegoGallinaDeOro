@@ -196,6 +196,7 @@ func _begin_attack() -> void:
 	if EGG_SHOUTS.has(egg_kind):
 		Effects.floating_text(_ctx.world_root, global_position + Vector3.UP * 1.6, EGG_SHOUTS[egg_kind],
 				EggProjectile.KIND_COLORS[egg_kind])
+		Sfx.play_3d(self, Sfx.ROOSTER if egg_kind == EggProjectile.Kind.EXPLOSIVE else Sfx.CLUCK, global_position, 2.0)
 	_enter(State.AIM, config.aim_time)
 	attack_started.emit(target)
 
@@ -221,7 +222,8 @@ func _fire() -> void:
 	tw.tween_property(model, "position", Vector3(back.x, 0.0, back.z), 0.08).set_ease(Tween.EASE_OUT)
 	tw.tween_property(model, "position", Vector3.ZERO, 0.6).set_trans(Tween.TRANS_SINE)
 	Effects.gas_puff(_ctx.world_root, global_position + aim_direction * 0.3 + Vector3.UP * 0.5, -aim_direction)
-	Sfx.play_3d(self, Sfx.SHOOT, global_position, 2.0)
+	# The egg comes out of its butt: a fart, a huge one for the bomb egg.
+	Sfx.play_3d(self, Sfx.FART_BIG if egg_kind == EggProjectile.Kind.EXPLOSIVE else Sfx.SHOOT, global_position, -2.0, 0.15)
 	shot_fired.emit(aim_direction)
 
 
@@ -262,8 +264,9 @@ func _pick_roam(now: float) -> void:
 		agent.target_position = _ctx.level.random_point_in_map()
 		model.play_hop()
 		if randf() < 0.6:
-			Effects.floating_text(_ctx.world_root, global_position + Vector3.UP * 1.6,
-					CRAZY_SHOUTS.pick_random(), Color(1.0, 0.55, 0.3))
+			var shout: String = CRAZY_SHOUTS.pick_random()
+			Effects.floating_text(_ctx.world_root, global_position + Vector3.UP * 1.6, shout, Color(1.0, 0.55, 0.3))
+			Sfx.play_3d(self, Sfx.ROOSTER if shout == "¡KIKIRIKÍ!" else Sfx.CLUCK, global_position, 0.0, 0.12)
 	elif roll < config.roam_crazy_chance + config.fly_chance:
 		roam = Roam.FLY
 		_fly()
@@ -271,6 +274,8 @@ func _pick_roam(now: float) -> void:
 		roam = Roam.PAUSE
 		_roam_until = now + randf_range(0.6, 1.4)
 		model.peck()
+		if randf() < 0.35:
+			Sfx.play_3d(self, Sfx.CLUCK, global_position, -6.0, 0.12)
 	else:
 		roam = Roam.WANDER
 		_roam_until = now + randf_range(2.5, 5.0)
@@ -301,7 +306,9 @@ func _fly() -> void:
 	model.fly_target = 1.0
 	model.play_hop()
 	Effects.dust_puff(_ctx.world_root, start, 10)
-	Sfx.play_3d(self, Sfx.JUMP, start, 2.0)
+	Sfx.play_3d(self, Sfx.WING_FLAPS, start, 0.0)
+	Sfx.play_3d(self, Sfx.CLUCK, start, -2.0, 0.12)
+	var flapping := Sfx.loop_3d(self, Sfx.LOOP_FLAP, -6.0)
 	velocity = Vector3.ZERO
 	var t := 0.0
 	while t < 1.0:
@@ -318,11 +325,15 @@ func _fly() -> void:
 			_ctx.world_root.add_child(bomb)
 			bomb.drop(global_position + Vector3.DOWN * 0.3, _ctx, [get_rid()])
 			model.play_shot()
+			Sfx.play_3d(self, Sfx.SHOOT, global_position, 0.0, 0.15)
 			Effects.floating_text(_ctx.world_root, global_position + Vector3.UP * 1.2, "¡BOMBA VA!",
 					EggProjectile.KIND_COLORS[EggProjectile.Kind.EXPLOSIVE])
 	global_position = destination
 	velocity = Vector3.ZERO
 	model.fly_target = 0.0
+	if is_instance_valid(flapping):
+		flapping.queue_free()
+	Sfx.play_3d(self, Sfx.WING_FLAPS, destination, -4.0)
 	Effects.dust_puff(_ctx.world_root, destination, 12)
 	flying = false
 	_roam_until = 0.0
@@ -343,14 +354,14 @@ func _teleport() -> void:
 			break
 		destination = _ctx.level.random_point_in_map()
 	Effects.teleport_flash(_ctx.world_root, global_position)
-	Sfx.play_3d(self, Sfx.ITEM, global_position, 2.0)
+	Sfx.play_3d(self, Sfx.TELEPORT_OUT, global_position, 0.0)
 	await model.play_teleport_out().finished
 	global_position = destination
 	velocity = Vector3.ZERO
 	agent.target_position = destination
 	await get_tree().create_timer(0.15).timeout
 	Effects.teleport_flash(_ctx.world_root, destination)
-	Sfx.play_3d(self, Sfx.ITEM, destination, 2.0)
+	Sfx.play_3d(self, Sfx.TELEPORT_IN, destination, 0.0)
 	await model.play_teleport_in().finished
 	teleporting = false
 	_roam_until = 0.0

@@ -41,6 +41,8 @@ func _ready() -> void:
 		_walk_test()
 	if _args.has("mechanics-test"):
 		_mechanics_test()
+	if _args.has("destruction-test"):
+		_destruction_test()
 	if _args.has("switch-map"):
 		_switch_map_once()
 	print("[autotest] started")
@@ -465,3 +467,43 @@ func _screenshot_later() -> void:
 	var err := get_viewport().get_texture().get_image().save_png(path)
 	print("[autotest] screenshot %s -> %s" % [path, error_string(err)])
 	get_tree().quit()
+
+
+## Explosions wreck the barn hit by hit and leave craters on open ground.
+func _destruction_test() -> void:
+	await _game.match_started
+	var g := _game
+	g.chicken.stop_attacking()
+	var level: Level = g.level
+	var boom := func(at: Vector3) -> void:
+		Effects.explosion(g.ctx.world_root, at, g.config.explosion_radius)
+		level.blast(at, g.config.explosion_radius)
+	var craters := level.destruction.find_children("Crater", "Node3D", false, false).size()
+	boom.call(Vector3(-3.0, 0.4, 3.0))
+	_check("La explosión en el suelo deja un cráter",
+			level.destruction.find_children("Crater", "Node3D", false, false).size() == craters + 1)
+	var barn := level.find_child("Barn", true, false) as Node3D
+	var hay := Vector3(9.4, 0.0, -7.6)  # a hay bale inside the barn blocks this spot
+	_check("La paja del granero bloquea el paso al principio", _flat_gap(level, hay) > 0.3)
+	for i in 3:
+		await get_tree().create_timer(0.6).timeout
+		boom.call(Vector3(11.5, 1.0, -3.2))
+	_check("El granero aguanta 3 explosiones", is_instance_valid(barn) and not barn.get_meta("broken", false),
+			"(golpes restantes %d)" % barn.get_meta("hits", -1))
+	await get_tree().create_timer(0.8).timeout
+	boom.call(Vector3(11.5, 1.0, -3.2))
+	await get_tree().physics_frame
+	_check("La cuarta explosión lo derrumba", barn.get_meta("broken", false))
+	_check("Sin colisiones del granero", barn.find_children("*", "CollisionObject3D", true, false).is_empty())
+	var region: NavigationRegion3D = level.nav_region
+	while region.is_baking():
+		await get_tree().physics_frame
+	for i in 10:
+		await get_tree().physics_frame
+	_check("Se puede caminar donde estaba la paja", _flat_gap(level, hay) < 0.3, "(%.2f m)" % _flat_gap(level, hay))
+	print("[rules] fallas: %d" % _checks_failed)
+
+
+func _flat_gap(level: Level, point: Vector3) -> float:
+	var p := NavigationServer3D.map_get_closest_point(level.get_world_3d().navigation_map, point)
+	return Vector2(p.x - point.x, p.z - point.z).length()

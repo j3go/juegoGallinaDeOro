@@ -14,6 +14,7 @@ func launch(by: CharacterBase, from: Vector3, dir: Vector3, context: MatchContex
 	model.rotation.y = atan2(direction.x, direction.z)
 	Kunai.build_model(model)
 	Sfx.play_3d(context.world_root, Sfx.THROW, from, -2.0)
+	Sfx.loop_3d(self, Sfx.LOOP_KUNAI, -6.0)
 
 
 static func build_model(parent: Node3D) -> void:
@@ -36,10 +37,11 @@ func _on_flying(_delta: float) -> void:
 func _on_hit_character(character: CharacterBase) -> void:
 	character.hit_by_kunai(direction)
 	Effects.sparkle_burst(ctx.world_root, global_position, Color(0.9, 0.9, 1.0), 10)
-	Sfx.play_3d(ctx.world_root, Sfx.HIT, global_position, -6.0)
+	Sfx.play_3d(ctx.world_root, Sfx.KUNAI_HIT, global_position, 0.0)
 	queue_free()
 
 
 func _on_hit_world() -> void:
 	Effects.dust_puff(ctx.world_root, global_position, 5)
+	Sfx.play_3d(ctx.world_root, Sfx.KUNAI_THUNK, global_position, -2.0)
 	queue_free()
