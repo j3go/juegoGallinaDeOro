@@ -5,14 +5,18 @@ extends CharacterBody3D
 ## them with a warning laser, lock the laser for a moment (visual + sound), bend into the shooting
 ## pose and fire one egg out of its butt along the locked line, with recoil and a puff of gas.
 ## The laser only warns; the egg hits the first character in its way, whoever it is.
+## Between attacks it roams the whole map: walks, runs around like crazy at changing speeds,
+## stops to peck, and every now and then teleports somewhere else.
 
 signal attack_started(target: CharacterBase)
 signal shot_fired(direction: Vector3)
 
 enum State { IDLE, AIM, LOCK, FIRE, RECOVER }
+enum Roam { WANDER, CRAZY, PAUSE }
 
 const SHOT_HEIGHT := 0.75
 const TURN_SPEED := 8.0
+const CRAZY_SHOUTS := ["¡COCOCÓ!", "¡CO-CO-COOO!", "¡KIKIRIKÍ!", "¡POCK POCK!"]
 
 @export var config: GameConfig
 
@@ -20,6 +24,8 @@ var state: State = State.IDLE
 var target: CharacterBase = null
 var aim_direction := Vector3.FORWARD
 var laser_length := 0.0
+var roam: Roam = Roam.PAUSE
+var teleporting := false
 
 var _ctx: MatchContext
 var _attacking := false
@@ -32,8 +38,15 @@ var _laser_band: MeshInstance3D
 var _laser_dot: MeshInstance3D
 var _laser_mat: StandardMaterial3D
 var _band_mat: StandardMaterial3D
+var _roam_until := 0.0
+var _roam_speed := 0.0
+var _speed_change_at := 0.0
+var _next_teleport_at := 0.0
+var _dust_at := 0.0
+var _zigzag_seed := 0.0
 
 @onready var model: ChickenModel = $Model
+@onready var agent: NavigationAgent3D = $NavigationAgent3D
 
 
 func _ready() -> void:
@@ -48,6 +61,8 @@ func setup(context: MatchContext) -> void:
 func start_attacking() -> void:
 	_attacking = true
 	_enter(State.IDLE, 1.5)
+	_roam_until = 0.0
+	_schedule_teleport()
 
 
 func stop_attacking() -> void:
@@ -77,15 +92,22 @@ func distance_to_line(point: Vector3) -> float:
 func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y -= config.gravity * delta
-	velocity.x = 0.0
-	velocity.z = 0.0
-	move_and_slide()
-
 	var now := GameClock.now
+	var walk := Vector3.ZERO
+	if state == State.IDLE and _attacking and not teleporting:
+		if now >= _next_teleport_at:
+			_teleport()
+		elif now < _state_until:
+			walk = _roam_velocity(now)
+	velocity.x = walk.x
+	velocity.z = walk.z
+	move_and_slide()
+	model.frenzy_target = 1.0 if walk != Vector3.ZERO and roam == Roam.CRAZY else 0.0
+
 	match state:
 		State.IDLE:
 			model.fire_pose_target = 0.0
-			if _attacking and now >= _state_until:
+			if _attacking and not teleporting and now >= _state_until:
 				_begin_attack()
 		State.AIM:
 			model.fire_pose_target = 1.0
@@ -111,7 +133,10 @@ func _physics_process(delta: float) -> void:
 	# Face the line of fire (the egg leaves towards the chicken's front).
 	if state != State.IDLE:
 		model.rotation.y = lerp_angle(model.rotation.y, atan2(aim_direction.x, aim_direction.z), 1.0 - exp(-TURN_SPEED * delta))
-	model.animate(delta, 0.0)
+	elif walk.length() > 0.1:
+		var turn := TURN_SPEED * (2.0 if roam == Roam.CRAZY else 1.0)
+		model.rotation.y = lerp_angle(model.rotation.y, atan2(walk.x, walk.z), 1.0 - exp(-turn * delta))
+	model.animate(delta, Vector2(velocity.x, velocity.z).length())
 	_update_laser()
 
 
@@ -170,6 +195,84 @@ func _fire() -> void:
 	Effects.gas_puff(_ctx.world_root, global_position + aim_direction * 0.3 + Vector3.UP * 0.5, -aim_direction)
 	Sfx.play_3d(self, Sfx.SHOOT, global_position, 2.0)
 	shot_fired.emit(aim_direction)
+
+
+# --- Roaming and teleports -----------------------------------------------------------------
+
+## Horizontal velocity for this frame while roaming between attacks.
+func _roam_velocity(now: float) -> Vector3:
+	if now >= _roam_until or (roam != Roam.PAUSE and agent.is_navigation_finished()):
+		_pick_roam(now)
+	if roam == Roam.PAUSE:
+		return Vector3.ZERO
+	if roam == Roam.CRAZY and now >= _speed_change_at:
+		# Crazy run: random bursts of speed and sudden changes of direction.
+		_roam_speed = randf_range(config.roam_crazy_speed_min, config.roam_crazy_speed_max)
+		_speed_change_at = now + randf_range(0.25, 0.7)
+		if randf() < 0.3:
+			agent.target_position = _ctx.level.random_point_in_map()
+	var to := agent.get_next_path_position() - global_position
+	to.y = 0.0
+	if to.length() < 0.05:
+		return Vector3.ZERO
+	var dir := to.normalized()
+	if roam == Roam.CRAZY:
+		dir = dir.rotated(Vector3.UP, sin(now * 9.0 + _zigzag_seed) * 0.6)
+		if now >= _dust_at:
+			_dust_at = now + 0.12
+			Effects.dust_puff(_ctx.world_root, global_position, 3)
+	return dir * _roam_speed
+
+
+func _pick_roam(now: float) -> void:
+	var roll := randf()
+	if roll < config.roam_crazy_chance:
+		roam = Roam.CRAZY
+		_roam_until = now + randf_range(2.0, 4.5)
+		_speed_change_at = 0.0
+		_zigzag_seed = randf() * TAU
+		agent.target_position = _ctx.level.random_point_in_map()
+		model.play_hop()
+		if randf() < 0.6:
+			Effects.floating_text(_ctx.world_root, global_position + Vector3.UP * 1.6,
+					CRAZY_SHOUTS.pick_random(), Color(1.0, 0.55, 0.3))
+	elif roll < config.roam_crazy_chance + 0.2:
+		roam = Roam.PAUSE
+		_roam_until = now + randf_range(0.6, 1.4)
+		model.peck()
+	else:
+		roam = Roam.WANDER
+		_roam_until = now + randf_range(2.5, 5.0)
+		_roam_speed = randf_range(config.roam_walk_speed_min, config.roam_walk_speed_max)
+		agent.target_position = _ctx.level.random_point_near(global_position, 3.0, 9.0)
+
+
+func _schedule_teleport() -> void:
+	_next_teleport_at = GameClock.now + randf_range(config.teleport_interval_min, config.teleport_interval_max)
+
+
+func _teleport() -> void:
+	teleporting = true
+	var destination := _ctx.level.random_point_in_map()
+	for i in 4:
+		if destination.distance_to(global_position) > 8.0:
+			break
+		destination = _ctx.level.random_point_in_map()
+	Effects.teleport_flash(_ctx.world_root, global_position)
+	Sfx.play_3d(self, Sfx.ITEM, global_position, 2.0)
+	await model.play_teleport_out().finished
+	global_position = destination
+	velocity = Vector3.ZERO
+	agent.target_position = destination
+	await get_tree().create_timer(0.15).timeout
+	Effects.teleport_flash(_ctx.world_root, destination)
+	Sfx.play_3d(self, Sfx.ITEM, destination, 2.0)
+	await model.play_teleport_in().finished
+	teleporting = false
+	_roam_until = 0.0
+	_schedule_teleport()
+	# Give everyone a moment to spot where it landed before the next attack.
+	_state_until = maxf(_state_until, GameClock.now + 1.0)
 
 
 func _enter(new_state: State, duration: float) -> void:

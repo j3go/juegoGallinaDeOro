@@ -31,15 +31,29 @@ var _peck := 0.0
 ## 0 = normal, 1 = shooting pose (bent back, legs up, butt pointing forward). Set by the AI.
 var fire_pose_target := 0.0
 var _pose := 0.0
+## 0 = calm, 1 = running around like crazy (head shaking, nonstop flapping). Set by the AI.
+var frenzy_target := 0.0
+var _frenzy := 0.0
 
-## Lean used by the shooting pose and the body centre it rotates around (rig space).
+## Lean used by the shooting pose.
 const POSE_LEAN := -2.2
 const POSE_LIFT := 0.15
-const BODY_CENTER := Vector3(0, 0.44, -0.02)
+
+## Proportions that subclasses with a different build override in `_init`.
+var rig_scale := 0.78
+## Body centre the shooting pose rotates around (body space).
+var body_center := Vector3(0, 0.44, -0.02)
+## How far above the body centre the hips go in the shooting pose.
+var hip_up_offset := 0.28
+var head_rest_z := 0.14
+var vent := Vector3(0, 0.72, 0.38)
+var _hip_rest: Array[Vector3] = []
 
 
 func _ready() -> void:
 	_build()
+	for hip in legs:
+		_hip_rest.append(hip.position)
 
 
 func _build() -> void:
@@ -53,7 +67,7 @@ func _build() -> void:
 	var shine := Toon.unshaded(Color(1, 1, 1))
 
 	rig = Toon.pivot(self, Vector3.ZERO, "Rig")
-	rig.scale = Vector3.ONE * 0.78
+	rig.scale = Vector3.ONE * rig_scale
 
 	for side: float in [-1.0, 1.0]:
 		var hip := Toon.pivot(rig, Vector3(0.15 * side, 0.24, 0.02))
@@ -102,12 +116,19 @@ func animate(delta: float, speed: float) -> void:
 	var amount := clampf(speed / 2.0, 0.0, 1.3)
 	_phase += delta * (5.0 + speed * 4.0) if moving else delta * 1.5
 	var k := 1.0 - exp(-10.0 * delta)
+	_frenzy = move_toward(_frenzy, frenzy_target, delta * 3.0)
 
 	if not _busy and _pose <= 0.001:
 		body_root.rotation.z = lerpf(body_root.rotation.z, sin(_phase) * 0.13 * amount, k)
-		body_root.rotation.x = lerpf(body_root.rotation.x, 0.1 * amount + _peck * 0.5, k)
-		body_root.position.y = BODY_Y + absf(sin(_phase)) * 0.05 * amount + sin(_time * 2.2) * 0.008
-		head.position.z = 0.14 + sin(_phase * 2.0) * 0.03 * amount
+		body_root.rotation.x = lerpf(body_root.rotation.x, 0.1 * amount + 0.25 * _frenzy + _peck * 0.5, k)
+		body_root.position.y = BODY_Y + absf(sin(_phase)) * (0.05 + 0.06 * _frenzy) * amount + sin(_time * 2.2) * 0.008
+		head.position.z = head_rest_z + sin(_phase * 2.0) * 0.03 * amount
+	# Crazy run: the head shakes around and the wings never stop flapping.
+	if _pose <= 0.001:
+		head.rotation.y = lerpf(head.rotation.y, sin(_time * 23.0) * 0.4 * _frenzy, k)
+		head.rotation.z = lerpf(head.rotation.z, sin(_time * 17.0) * 0.25 * _frenzy, k)
+	if _frenzy > 0.5:
+		flap(0.1)
 
 	for i in legs.size():
 		var side := -1.0 if i == 0 else 1.0
@@ -130,20 +151,19 @@ func _apply_fire_pose(delta: float) -> void:
 	_pose = move_toward(_pose, fire_pose_target, delta * 3.0)
 	if _pose <= 0.001:
 		for i in legs.size():
-			legs[i].position = Vector3(0.15 * (-1.0 if i == 0 else 1.0), 0.24, 0.02)
+			legs[i].position = _hip_rest[i]
 		return
 	var t := smoothstep(0.0, 1.0, _pose)
 	var angle := POSE_LEAN * t
 	# Rotate around the body centre so the chicken doesn't sink into the ground.
-	var rotated := Basis(Vector3.RIGHT, angle) * BODY_CENTER
+	var rotated := Basis(Vector3.RIGHT, angle) * body_center
 	body_root.rotation.x = angle
 	body_root.rotation.z = lerpf(body_root.rotation.z, 0.0, t)
-	body_root.position = Vector3(0, BODY_Y, 0) + (BODY_CENTER - rotated) + Vector3.UP * POSE_LIFT * t
+	body_root.position = Vector3(0, BODY_Y, 0) + (body_center - rotated) + Vector3.UP * POSE_LIFT * t
 	# Legs go up in the air, sticking out of the belly (now facing up).
 	for i in legs.size():
-		var side := -1.0 if i == 0 else 1.0
-		var hip_down := Vector3(0.15 * side, 0.24, 0.02)
-		var hip_up := Vector3(0.15 * side, BODY_CENTER.y + POSE_LIFT + 0.28, 0.12)
+		var hip_down := _hip_rest[i]
+		var hip_up := Vector3(hip_down.x, body_center.y + POSE_LIFT + hip_up_offset, 0.12)
 		legs[i].position = hip_down.lerp(hip_up, t)
 		legs[i].rotation.x = lerpf(legs[i].rotation.x, PI * 0.9 + sin(_time * 16.0 + i) * 0.25, t)
 	head.rotation.x = 1.4 * t
@@ -152,14 +172,48 @@ func _apply_fire_pose(delta: float) -> void:
 
 ## Where the egg comes out while in the shooting pose (local to this model, facing +Z).
 func vent_position() -> Vector3:
-	return Vector3(0, 0.72, 0.38)
+	return vent
 
 
 func play_shot() -> void:
 	flap(0.8)
 	var tw := create_tween()
-	tw.tween_property(rig, "scale", Vector3(0.88, 1.12, 0.88) * 0.78, 0.06)
-	tw.tween_property(rig, "scale", Vector3.ONE * 0.78, 0.35).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(rig, "scale", Vector3(0.88, 1.12, 0.88) * rig_scale, 0.06)
+	tw.tween_property(rig, "scale", Vector3.ONE * rig_scale, 0.35).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+
+
+## Squash, spin and shoot up into nothing. The model ends up invisible (tiny) until `play_teleport_in`.
+func play_teleport_out() -> Tween:
+	_busy = true
+	flap(1.0)
+	var rs := rig_scale
+	var tw := create_tween()
+	tw.tween_property(rig, "scale", Vector3(1.35, 0.6, 1.35) * rs, 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(rig, "rotation:y", TAU, 0.18).set_ease(Tween.EASE_IN)
+	tw.tween_property(rig, "scale", Vector3(0.2, 2.6, 0.2) * rs, 0.16).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(rig, "position:y", 0.5, 0.16).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(rig, "rotation:y", TAU * 3.0, 0.16)
+	tw.tween_property(rig, "scale", Vector3(0.01, 4.0, 0.01) * rs, 0.08)
+	tw.parallel().tween_property(rig, "position:y", 1.4, 0.08)
+	return tw
+
+
+## Drop down from above as a thin streak, splat on landing and wobble back into shape.
+func play_teleport_in() -> Tween:
+	_busy = true
+	var rs := rig_scale
+	rig.scale = Vector3(0.05, 3.0, 0.05) * rs
+	rig.position.y = 1.4
+	rig.rotation.y = -TAU * 2.0
+	create_tween().tween_property(rig, "rotation:y", 0.0, 0.6).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	var tw := create_tween()
+	tw.tween_property(rig, "position:y", 0.0, 0.16).set_ease(Tween.EASE_IN)
+	tw.parallel().tween_property(rig, "scale", Vector3(0.7, 1.4, 0.7) * rs, 0.16)
+	tw.tween_property(rig, "scale", Vector3(1.4, 0.6, 1.4) * rs, 0.08)
+	tw.tween_callback(flap.bind(1.0))
+	tw.tween_property(rig, "scale", Vector3.ONE * rs, 0.5).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(func() -> void: _busy = false)
+	return tw
 
 
 func flap(duration: float = 0.6) -> void:

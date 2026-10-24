@@ -1,9 +1,10 @@
 # Golden Chicken
 
-Juego 3D en Godot 4.7 (GDScript) basado en `diseno_granja_huevos_dorados_v0_1.pdf`. Seis jugadores (vos y cinco rivales) compiten por huevos de oro en **Noche en la Granja**. La gallina está en el centro y **le dispara al que lleve más huevos**. Gana quien conserve más huevos al terminar los 3 minutos.
+Juego 3D en Godot 4.7 (GDScript) basado en `diseno_granja_huevos_dorados_v0_1.pdf`. Seis jugadores (vos y cinco rivales) compiten por huevos de oro en **Noche en la Granja**. La gallina anda suelta por el mapa y **le dispara al que lleve más huevos**. Gana quien conserve más huevos al terminar los 3 minutos.
 
 ## Reglas (diseño v0.1)
 - **La gallina** elige al líder al empezar cada ataque (con empate, incluido el 0 a 0, alterna en un orden fijo). Lo sigue con un **láser** que solo avisa, lo **fija** un instante (destello y pitido) y dispara un huevo por el culo, doblada con las patas arriba, con retroceso y gas. El huevo vuela recto y golpea al **primer** personaje que encuentre, aunque no sea el objetivo. Si choca o termina su recorrido, cae como huevo recogible.
+- **Entre ataques** la gallina recorre todo el mapa: camina, corre como loca (zigzag, cambios bruscos de velocidad, polvo y gritos) o se queda picoteando, y cada tanto **se teletransporta** a otro punto con un rayo de luz. Se configura en el grupo *Gallina* de `default_config.tres` (`roam_*`, `teleport_interval_*`).
 - **Impacto de huevo:** derriba y hace soltar los huevos, que se reparten por el suelo. El derribado se levanta solo y queda un rato protegido (parpadea): no actúa y los impactos no le quitan más.
 - **Recoger (E):** hay que apretar al lado del huevo; pasar por encima no lo recoge. No se puede recoger mientras agarrás o te agarran, ni siquiera con inmortalidad.
 - **Empujar (F o clic izquierdo):** empujón frontal corto con enfriamiento. No hace soltar huevos. Sirve para meter a un rival en el láser.

@@ -52,6 +52,30 @@ static func gas_puff(parent: Node, pos: Vector3, direction: Vector3) -> void:
 	p.emitting = true
 
 
+## Column of light plus sparkles, used where the chicken teleports out and back in.
+static func teleport_flash(parent: Node, pos: Vector3, color: Color = Color(0.75, 0.45, 1.0)) -> void:
+	sparkle_burst(parent, pos + Vector3.UP * 0.6, color, 34)
+	var beam := MeshInstance3D.new()
+	beam.mesh = Toon.cylinder(0.5, 0.5, 1.0, 20)
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.albedo_color = Color(color, 0.8)
+	beam.material_override = m
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(beam)
+	beam.global_position = Vector3(pos.x, 0.0, pos.z)
+	beam.scale = Vector3(1.4, 0.01, 1.4)
+	var tw := beam.create_tween()
+	tw.tween_property(beam, "scale", Vector3(1.0, 5.0, 1.0), 0.15).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(beam, "position:y", 2.5, 0.15).set_ease(Tween.EASE_OUT)
+	tw.tween_property(beam, "scale", Vector3(0.05, 6.0, 0.05), 0.4).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_CUBIC)
+	tw.parallel().tween_property(m, "albedo_color:a", 0.0, 0.4)
+	tw.tween_callback(beam.queue_free)
+
+
 static func floating_text(parent: Node, pos: Vector3, text: String, color: Color) -> void:
 	var label := Label3D.new()
 	label.text = text

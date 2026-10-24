@@ -17,6 +17,16 @@ extends Resource
 ## ...then stays fixed this long before the shot.
 @export var lock_time := 0.6
 @export var recover_time := 0.7
+## Between attacks the chicken roams the map: walks, runs around like crazy or stops to peck.
+@export var roam_walk_speed_min := 1.2
+@export var roam_walk_speed_max := 2.6
+## Crazy runs cross the whole map and change speed every fraction of a second.
+@export var roam_crazy_speed_min := 4.5
+@export var roam_crazy_speed_max := 8.0
+@export_range(0.0, 1.0) var roam_crazy_chance := 0.45
+## Seconds between teleports (only between attacks).
+@export var teleport_interval_min := 7.0
+@export var teleport_interval_max := 14.0
 @export var egg_speed := 14.0
 @export var egg_range := 26.0
 ## Radius of the flying egg (also the width shown by the laser).
