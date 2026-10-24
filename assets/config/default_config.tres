@@ -1,6 +1,13 @@
-[gd_resource type="Resource" script_class="GameConfig" format=3]
+[gd_resource type="Resource" script_class="GameConfig" format=3 uid="uid://racanmuiqlrc"]
 
-[ext_resource type="Script" path="res://scripts/resources/game_config.gd" id="1"]
+[ext_resource type="Script" uid="uid://bc1n7dlvqbr3s" path="res://scripts/resources/game_config.gd" id="1"]
 
 [resource]
 script = ExtResource("1")
+attack_interval_min = 0.6
+attack_interval_max = 0.8
+aim_time = 0.6
+roam_walk_speed_min = 3.0
+roam_walk_speed_max = 4.0
+roam_crazy_speed_min = 6.0
+roam_crazy_speed_max = 10.0

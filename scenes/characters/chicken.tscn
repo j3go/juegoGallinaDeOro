@@ -1,29 +1,27 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://81dcojj1mt1"]
 
-[ext_resource type="Script" path="res://scripts/chicken_ai.gd" id="1"]
-[ext_resource type="Script" path="res://scripts/visual/king_chicken_model.gd" id="2"]
-[ext_resource type="Resource" path="res://assets/config/default_config.tres" id="3"]
+[ext_resource type="Script" uid="uid://c5tctseg7uox3" path="res://scripts/chicken_ai.gd" id="1"]
+[ext_resource type="Script" uid="uid://bjpstcvjj1uqt" path="res://scripts/visual/king_chicken_model.gd" id="2"]
+[ext_resource type="Resource" uid="uid://racanmuiqlrc" path="res://assets/config/default_config.tres" id="3"]
 
 [sub_resource type="CapsuleShape3D" id="body"]
 radius = 0.38
 height = 1.0
 
-[node name="Chicken" type="CharacterBody3D"]
+[node name="Chicken" type="CharacterBody3D" unique_id=1962347373]
 collision_layer = 8
-collision_mask = 1
 floor_snap_length = 0.3
 script = ExtResource("1")
 config = ExtResource("3")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=21764262]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
 shape = SubResource("body")
 
-[node name="Model" type="Node3D" parent="."]
+[node name="Model" type="Node3D" parent="." unique_id=1580855847]
 script = ExtResource("2")
 
-[node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="." unique_id=222569815]
 path_desired_distance = 0.6
 target_desired_distance = 0.6
 radius = 0.4
-height = 1.0
