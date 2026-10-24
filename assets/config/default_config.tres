@@ -4,13 +4,15 @@
 
 [resource]
 script = ExtResource("1")
-attack_interval_min = 0.6
-attack_interval_max = 0.8
+attack_interval_min = 0.3
+attack_interval_max = 0.7
 aim_time = 0.6
-roam_walk_speed_min = 3.0
+recover_time = 0.4
+roam_walk_speed_min = 2.0
 roam_walk_speed_max = 4.0
 roam_crazy_speed_min = 6.0
 roam_crazy_speed_max = 10.0
+egg_speed = 28.0
 push_force = 13.0
 player_run_speed = 10.0
 jump_velocity = 10.0
