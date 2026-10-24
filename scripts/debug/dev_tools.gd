@@ -271,17 +271,17 @@ func _mechanics_test() -> void:
 	var gs: GrabSystem = g.grab_system
 	var north := Vector3(0, 0, -1)
 
-	# 1. Equal and opposite forces cancel.
+	# 1. The grabber drags the grabbed one even if they pull the other way.
 	put.call([a, b], spots)
 	await get_tree().physics_frame
 	a.grab_ready_at = 0.0
 	_check("Agarre iniciado", a.try_grab() or gs.create_link(a, b))
-	var start_mid := (a.global_position + b.global_position) * 0.5
+	var start_z := a.global_position.z
 	a.move_input = north
 	b.move_input = -north
 	await get_tree().create_timer(1.0).timeout
-	var moved := ((a.global_position + b.global_position) * 0.5).distance_to(start_mid)
-	_check("Fuerzas iguales y opuestas se cancelan", moved < 0.2, "(%.2f m)" % moved)
+	var dragged := start_z - a.global_position.z
+	_check("Quien agarra arrastra al agarrado aunque resista", dragged > 1.0, "(%.2f m al norte)" % dragged)
 
 	# 2. Same direction: the chain moves that way.
 	b.move_input = north
@@ -290,6 +290,24 @@ func _mechanics_test() -> void:
 	var dz := before.z - a.global_position.z
 	_check("Fuerzas en la misma dirección mueven la cadena", dz > 2.5, "(%.2f m al norte)" % dz)
 	_check("La suma no supera la velocidad máxima", a.chain_velocity.length() <= g.config.chain_max_speed + 0.01)
+	gs.release_all()
+	for c in cs:
+		c.move_input = Vector3.ZERO
+	await get_tree().create_timer(0.3).timeout
+
+	# 2b. Two grabbers on the same victim pulling opposite ways cancel out.
+	put.call([a, b, c3], spots)
+	await get_tree().physics_frame
+	a.grab_ready_at = 0.0
+	c3.grab_ready_at = 0.0
+	gs.create_link(a, b)
+	gs.create_link(c3, b)
+	var start_mid := b.global_position
+	a.move_input = north
+	c3.move_input = -north
+	await get_tree().create_timer(1.0).timeout
+	var moved := b.global_position.distance_to(start_mid)
+	_check("Fuerzas iguales y opuestas se cancelan", moved < 0.2, "(%.2f m)" % moved)
 	gs.release_all()
 	for c in cs:
 		c.move_input = Vector3.ZERO
@@ -306,11 +324,12 @@ func _mechanics_test() -> void:
 	b.move_input = north
 	c3.move_input = -north
 	await get_tree().physics_frame
-	var expected: float = g.config.pull_speed * 1.0
+	var net: float = 2.0 - g.config.grabbed_pull_weight
+	var expected: float = minf(g.config.pull_speed * net, g.config.chain_max_speed)
 	_check("Cadena de 3 (2 norte, 1 sur): fuerza neta al norte", absf(a.chain_velocity.z + expected) < 0.3,
 			"(vz=%.2f, esperado %.2f)" % [a.chain_velocity.z, -expected])
 	var forces := gs.chain_force(gs.get_chains()[0])
-	_check("El jugador intermedio aporta una sola vez", is_equal_approx(forces.length(), 1.0), "(|F|=%.2f)" % forces.length())
+	_check("El jugador intermedio aporta una sola vez", is_equal_approx(forces.length(), net), "(|F|=%.2f)" % forces.length())
 	gs.release_all()
 	for c in cs:
 		c.move_input = Vector3.ZERO

@@ -3,9 +3,11 @@ extends Node3D
 ## Grab links and chains (design doc v0.1, confirmed rules):
 ## - Each link lasts `grab_duration` (3 s) from its own start; links end independently.
 ## - The initiator can start another grab `grab_duration + grab_cooldown` (13 s) after starting.
-## - Characters joined by links form a chain. Every member adds its pull ONCE (force 1 in its
-##   input direction, in world space). The chain moves with the sum: equal opposite pulls cancel,
-##   pulls in the same direction add up (with a top speed), uneven ones favour the larger side.
+## - Characters joined by links form a chain. Every member adds its pull ONCE in its input
+##   direction (world space): force 1 if it is grabbing someone, `grabbed_pull_weight` if it is
+##   only being grabbed, so a grabber drags its victim without much resistance. The chain moves
+##   with the sum: equal opposite pulls cancel, pulls in the same direction add up (with a top
+##   speed), uneven ones favour the larger side.
 
 class GrabLink:
 	var from: CharacterBase
@@ -105,8 +107,13 @@ func get_chains() -> Array:
 func chain_force(chain: Array[CharacterBase]) -> Vector3:
 	var net := Vector3.ZERO
 	for c in chain:
-		net += c.pull_force()
+		net += c.pull_force() * pull_weight(c)
 	return net
+
+
+## Grabbers pull with force 1; characters that are only being grabbed resist weakly.
+func pull_weight(c: CharacterBase) -> float:
+	return 1.0 if c.outgoing_link != null else _config.grabbed_pull_weight
 
 
 func _physics_process(_delta: float) -> void:

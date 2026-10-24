@@ -8,7 +8,7 @@ Juego 3D en Godot 4.7 (GDScript) basado en `diseno_granja_huevos_dorados_v0_1.pd
 - **Impacto de huevo:** derriba y hace soltar los huevos, que se reparten por el suelo. El derribado se levanta solo y queda un rato protegido (parpadea): no actúa y los impactos no le quitan más.
 - **Recoger (E):** hay que apretar al lado del huevo; pasar por encima no lo recoge. No se puede recoger mientras agarrás o te agarran, ni siquiera con inmortalidad.
 - **Empujar (F o clic izquierdo):** empujón frontal corto con enfriamiento. No hace soltar huevos. Sirve para meter a un rival en el láser.
-- **Agarrar (G o clic derecho):** el agarre dura 3 s y el siguiente se puede iniciar 13 s después de empezar el anterior. Los agarres forman **cadenas**: cada participante tira con fuerza 1 hacia donde se mueve, las fuerzas iguales y opuestas se anulan y las de igual sentido se suman (hasta una velocidad máxima).
+- **Agarrar (G o clic derecho):** el agarre dura 3 s y el siguiente se puede iniciar 13 s después de empezar el anterior. Los agarres forman **cadenas**: quien agarra tira con fuerza 1 hacia donde se mueve y el agarrado solo resiste con fuerza 0,3 (`grabbed_pull_weight`), así que podés arrastrarlo aunque tire para el otro lado. Las fuerzas iguales y opuestas se anulan y las de igual sentido se suman (hasta una velocidad máxima).
 - **Objetos (Q para usar):** cada 30 s aparece una oleada en el mapa. El **kunai** se lanza hacia donde mira la cámara y hace soltar huevos. La **inmortalidad** dura 5 s y evita derribos y pérdidas (igual te pueden empujar y agarrar). Se lleva un objeto por vez.
 
 ## Cómo jugar

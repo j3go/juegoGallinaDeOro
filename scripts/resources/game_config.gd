@@ -56,8 +56,10 @@ extends Resource
 @export var grab_duration := 3.0
 ## Starts when the grab ends (so the next grab is possible 13 s after starting one).
 @export var grab_cooldown := 10.0
-## Chain speed per unit of net pulling force (every participant pulls with force 1).
+## Chain speed per unit of net pulling force (whoever grabs pulls with force 1).
 @export var pull_speed := 2.6
+## Force of someone who is only being grabbed, so the grabber can drag them without much resistance.
+@export_range(0.0, 1.0) var grabbed_pull_weight := 0.3
 ## Joint force doesn't multiply speed without limit.
 @export var chain_max_speed := 4.0
 
