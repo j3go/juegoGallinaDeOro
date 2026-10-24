@@ -11,3 +11,6 @@ roam_walk_speed_min = 3.0
 roam_walk_speed_max = 4.0
 roam_crazy_speed_min = 6.0
 roam_crazy_speed_max = 10.0
+push_force = 13.0
+player_run_speed = 10.0
+jump_velocity = 10.0
