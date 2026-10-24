@@ -49,6 +49,7 @@ var _was_down := false
 var _bubble: MeshInstance3D
 var _stars: Node3D
 var _effort_arrow: Node3D
+var _tug_dust_at := 0.0
 
 @onready var model: HumanModel = $Model
 
@@ -96,6 +97,16 @@ func is_linked() -> bool:
 ## Eggs can't be picked up while grabbing or being grabbed (immortality doesn't change that).
 func can_pick_eggs() -> bool:
 	return can_act() and not is_linked()
+
+
+## Rivals linked to this character: first the one it grabbed, then those grabbing it.
+func grab_partners() -> Array[CharacterBase]:
+	var partners: Array[CharacterBase] = []
+	if outgoing_link != null:
+		partners.append(outgoing_link.to)
+	for l in incoming_links:
+		partners.append(l.from)
+	return partners
 
 
 func grab_cooldown_left() -> float:
@@ -251,6 +262,22 @@ func add_eggs(points: int) -> void:
 	model.play_collect()
 
 
+## Called by GrabSystem when a link involving this character starts.
+func grab_started(initiator: bool) -> void:
+	model.play_grab_start(initiator)
+	if ctx:
+		Effects.floating_text(ctx.world_root, global_position + Vector3.UP * 1.6, "!", Color(1.0, 0.85, 0.3))
+
+
+## Called by GrabSystem when a link involving this character ends.
+func grab_ended() -> void:
+	if is_linked() or is_down():
+		return
+	model.play_grab_release()
+	if ctx:
+		Effects.dust_puff(ctx.world_root, global_position, 6)
+
+
 func set_active(active: bool) -> void:
 	is_active = active
 	if not active:
@@ -324,6 +351,10 @@ func _move_body(delta: float, own_velocity: Vector3, acceleration: float) -> voi
 
 ## Smoothly turns the visual model towards a horizontal direction.
 func _face_direction(direction: Vector3, delta: float, turn_speed: float = 12.0) -> void:
+	# In a grab, look at the rival you are struggling with.
+	var partners := grab_partners()
+	if not partners.is_empty():
+		direction = partners[0].global_position - global_position
 	if is_down() or Vector2(direction.x, direction.z).length_squared() < 0.0004:
 		return
 	var target := atan2(direction.x, direction.z)
@@ -390,3 +421,30 @@ func _update_status_visuals(delta: float) -> void:
 	_effort_arrow.visible = in_chain and pull.length() > 0.1
 	if _effort_arrow.visible:
 		_effort_arrow.rotation.y = atan2(pull.x, pull.z)
+	_update_grab_pose()
+
+
+## Tug-of-war: hands meet the rival halfway, lean back when pulling away, and get dragged
+## onto the belly when the chain moves towards the rival against this character's will.
+func _update_grab_pose() -> void:
+	var partners := grab_partners()
+	if partners.is_empty() or is_down():
+		model.set_grab([], 0.0, 0.0)
+		return
+	var targets: Array[Vector3] = []
+	for p: CharacterBase in partners.slice(0, 2):
+		var mid := (global_position + p.global_position) * 0.5
+		targets.append(Vector3(mid.x, global_position.y + 0.68, mid.z))
+	var to_partner := partners[0].global_position - global_position
+	to_partner.y = 0.0
+	to_partner = to_partner.normalized()
+	var pull := pull_force().dot(to_partner)
+	var strain := clampf(0.45 - pull, 0.0, 1.0)
+	var dragged := 0.0
+	if pull < 0.3:
+		dragged = clampf((chain_velocity.dot(to_partner) - 0.6) / 1.6, 0.0, 1.0)
+	model.set_grab(targets, strain, dragged)
+	# Dust kicked up by heels digging in or a body sliding on the ground.
+	if ctx and now() >= _tug_dust_at and (dragged > 0.5 or (strain > 0.8 and horizontal_speed() > 0.5)):
+		_tug_dust_at = now() + 0.2
+		Effects.dust_puff(ctx.world_root, global_position, 3)

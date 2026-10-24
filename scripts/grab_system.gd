@@ -13,7 +13,6 @@ class GrabLink:
 	var started := 0.0
 	var ends := 0.0
 	var length := 1.0
-	var rope: MeshInstance3D
 
 signal link_started(link: GrabLink)
 signal link_ended(link: GrabLink)
@@ -46,17 +45,17 @@ func create_link(from: CharacterBase, to: CharacterBase) -> bool:
 	link.ends = link.started + _config.grab_duration
 	# Keep the current distance as rope length so joining never makes anyone jump.
 	link.length = maxf(0.8, _flat(to.global_position - from.global_position).length())
-	link.rope = _make_rope(from.team_color)
 	links.append(link)
 	from.outgoing_link = link
 	to.incoming_links.append(link)
 	# The cooldown starts when the grab ends: next grab 13 s after this one started.
 	from.grab_ready_at = link.started + _config.grab_duration + _config.grab_cooldown
 	Sfx.play_3d(self, Sfx.GRAB, to.global_position, -3.0)
+	from.grab_started(true)
+	to.grab_started(false)
 	from.status_changed.emit(from)
 	to.status_changed.emit(to)
 	link_started.emit(link)
-	_update_ropes()
 	return true
 
 
@@ -130,7 +129,6 @@ func _physics_process(_delta: float) -> void:
 			var fix := d.normalized() * minf(stretch * 4.0, 3.0)
 			l.from.chain_velocity += fix * 0.5
 			l.to.chain_velocity -= fix * 0.5
-	_update_ropes()
 
 
 func _end_link(link: GrabLink) -> void:
@@ -138,33 +136,11 @@ func _end_link(link: GrabLink) -> void:
 	if link.from.outgoing_link == link:
 		link.from.outgoing_link = null
 	link.to.incoming_links.erase(link)
-	if is_instance_valid(link.rope):
-		link.rope.queue_free()
+	link.from.grab_ended()
+	link.to.grab_ended()
 	link.from.status_changed.emit(link.from)
 	link.to.status_changed.emit(link.to)
 	link_ended.emit(link)
-
-
-func _make_rope(color: Color) -> MeshInstance3D:
-	var rope := MeshInstance3D.new()
-	rope.mesh = Toon.cylinder(0.05, 0.05, 1.0, 8)
-	rope.material_override = Toon.emissive(color, 1.2)
-	rope.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(rope)
-	return rope
-
-
-func _update_ropes() -> void:
-	for l in links:
-		var a := l.from.global_position + Vector3.UP * 0.95
-		var b := l.to.global_position + Vector3.UP * 0.95
-		var length := a.distance_to(b)
-		if length < 0.05:
-			continue
-		var up := (b - a) / length
-		var side := up.cross(Vector3.FORWARD if absf(up.dot(Vector3.FORWARD)) < 0.9 else Vector3.RIGHT).normalized()
-		var basis := Basis(side, up, side.cross(up)).scaled(Vector3(1.0, length, 1.0))
-		l.rope.global_transform = Transform3D(basis, (a + b) * 0.5)
 
 
 func _flat(v: Vector3) -> Vector3:
