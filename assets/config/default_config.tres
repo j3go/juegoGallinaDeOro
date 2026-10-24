@@ -1,6 +1,8 @@
-[gd_resource type="Resource" script_class="GameConfig" format=3]
+[gd_resource type="Resource" script_class="GameConfig" format=3 uid="uid://bgl18av3pecwa"]
 
-[ext_resource type="Script" path="res://scripts/resources/game_config.gd" id="1"]
+[ext_resource type="Script" uid="uid://bc1n7dlvqbr3s" path="res://scripts/resources/game_config.gd" id="1"]
 
 [resource]
 script = ExtResource("1")
+attack_interval_min = 0.8
+attack_interval_max = 1.0
